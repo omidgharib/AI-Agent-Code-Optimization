@@ -1,24 +1,45 @@
 // FILE: src/core/engine.ts
-import { runEslint } from "../analyzers/eslint.js";
-import { runTsc } from "../analyzers/tsc.js";
-import { runPlaywright } from "../analyzers/playwright.js";
-import { normalize } from "../normalize/normalizer.js";
-import { prioritize } from "../prioritize/prioritize.js";
-import { buildContext } from "../fix/contextBuilder.js";
-import { selectIssuesForFix } from "../fix/fixPlanner.js";
-import { requestFix } from "../fix/llmClient.js";
-import { applyDiff } from "../fix/diffApplier.js";
-import { writeReport } from "../report/report.js";
-import { logger } from "./logger.js";
-import type { AuditConfig, PrioritizedIssue, FixResponse } from "./types.js";
+import { runEslint } from "../analyzers/eslint";
+import { runTsc } from "../analyzers/tsc";
+import { runPlaywright } from "../analyzers/playwright";
+import { runLighthouse } from "../analyzers/lighthouse";
+import { normalize } from "../normalize/normalizer";
+import { prioritize } from "../prioritize/prioritize";
+import { buildContext } from "../fix/contextBuilder";
+import { selectIssuesForFix } from "../fix/fixPlanner";
+import { requestFix } from "../fix/llmClient";
+import { applyDiff } from "../fix/diffApplier";
+import { writeReport } from "../report/report";
+import { logger } from "./logger";
+import type {
+  AuditConfig,
+  PrioritizedIssue,
+  FixResponse,
+  Issue,
+} from "./types";
 
-async function analyze(cwd: string) {
-  const [eslint, tsc, pw] = await Promise.all([
+async function analyze(
+  cwd: string,
+  url?: string,
+  includeLighthouse = true,
+): Promise<Issue[]> {
+  const tasks: Promise<Issue[]>[] = [
     runEslint(cwd),
     runTsc(cwd),
     runPlaywright(cwd),
-  ]);
-  return normalize([...eslint, ...tsc, ...pw]);
+  ];
+
+  if (url && includeLighthouse) {
+    tasks.push(
+      runLighthouse(url).catch((e) => {
+        logger.warn(`Lighthouse skipped: ${String(e)}`);
+        return [];
+      }),
+    );
+  }
+
+  const results = await Promise.all(tasks);
+  return normalize(results.flat());
 }
 
 export async function runAudit(
@@ -30,7 +51,7 @@ export async function runAudit(
   const verificationErrors: string[] = [];
 
   try {
-    let issues = await analyze(repoRoot);
+    let issues = await analyze(repoRoot, config.baseUrl);
 
     if (config.severity) {
       const order = ["low", "medium", "high", "critical"];
@@ -105,8 +126,11 @@ export async function runAudit(
 
         if (!anyApplied) break;
 
-        // Re-analyze after applying patches
-        const newIssues = await analyze(repoRoot);
+        // Re-analyze after applying patches.
+        // Lighthouse is skipped on re-runs to avoid repeated
+        // browser launches during the fix loop; it only runs once
+        // on the initial pass.
+        const newIssues = await analyze(repoRoot, config.baseUrl, false);
         const newPrioritized = prioritize(newIssues);
         if (newPrioritized.length >= prioritized.length) {
           logger.info("No improvement detected, stopping fix loop");
@@ -124,6 +148,7 @@ export async function runAudit(
       {
         json: config.json,
         md: config.md,
+        html: config.html ?? false,
         outDir,
       },
     );

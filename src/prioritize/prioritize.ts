@@ -1,5 +1,5 @@
 // FILE: src/prioritize/prioritize.ts
-import type { Issue, PrioritizedIssue, Effort } from "../core/types.js";
+import type { Issue, PrioritizedIssue, Effort } from "../core/types";
 
 const SEVERITY_WEIGHT: Record<string, number> = {
   low: 10,

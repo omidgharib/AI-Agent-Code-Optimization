@@ -1,6 +1,6 @@
 // FILE: src/fix/llmClient.ts
-import type { FixRequest, FixResponse } from "../core/types.js";
-import { FixResponseSchema } from "../core/schemas.js";
+import type { FixRequest, FixResponse } from "../core/types";
+import { FixResponseSchema } from "../core/schemas";
 
 export interface LLMClientConfig {
   baseUrl: string;

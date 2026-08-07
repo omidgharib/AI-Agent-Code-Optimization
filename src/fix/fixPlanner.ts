@@ -1,5 +1,5 @@
 // FILE: src/fix/fixPlanner.ts
-import type { PrioritizedIssue } from "../core/types.js";
+import type { PrioritizedIssue } from "../core/types";
 
 export function selectIssuesForFix(
   issues: PrioritizedIssue[],

@@ -1,6 +1,6 @@
 // FILE: tests/prioritize.test.ts
-import { prioritize } from "../prioritize/prioritize.js";
-import type { Issue } from "../core/types.js";
+import { prioritize } from "../prioritize/prioritize";
+import type { Issue } from "../core/types";
 
 const makeIssue = (overrides: Partial<Issue>): Issue => ({
   id: Math.random().toString(36).slice(2),

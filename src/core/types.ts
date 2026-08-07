@@ -78,4 +78,5 @@ export interface AuditConfig {
   apiKey: string;
   dryRun: boolean;
   verbose: boolean;
+  html?: boolean;
 }

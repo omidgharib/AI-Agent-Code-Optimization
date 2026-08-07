@@ -1,6 +1,6 @@
 // FILE: src/fix/contextBuilder.ts
 import fs from "node:fs/promises";
-import type { PrioritizedIssue } from "../core/types.js";
+import type { PrioritizedIssue } from "../core/types";
 
 const SECRET_PATTERNS = [
   /sk-[A-Za-z0-9]{20,}/g,

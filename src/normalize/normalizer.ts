@@ -1,6 +1,6 @@
 // FILE: src/normalize/normalizer.ts
-import { IssueSchema } from "../core/schemas.js";
-import type { Issue } from "../core/types.js";
+import { IssueSchema } from "../core/schemas";
+import type { Issue } from "../core/types";
 import path from "node:path";
 
 function posixPath(p: string): string {

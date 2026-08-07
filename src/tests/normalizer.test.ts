@@ -1,6 +1,6 @@
 // FILE: tests/normalizer.test.ts
-import { normalize } from "../normalize/normalizer.js";
-import type { Issue } from "../core/types.js";
+import { normalize } from "../normalize/normalizer";
+import type { Issue } from "../core/types";
 
 const base: Issue = {
   id: "abc123",

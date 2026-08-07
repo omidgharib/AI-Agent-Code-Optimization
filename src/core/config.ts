@@ -1,5 +1,5 @@
 // FILE: src/core/config.ts
-import type { AuditConfig } from "./types.js";
+import type { AuditConfig } from "./types";
 
 export function buildConfig(
   opts: Partial<AuditConfig> & { path?: string },
@@ -27,5 +27,6 @@ export function buildConfig(
     apiKey: opts.apiKey ?? process.env.OPENAI_API_KEY ?? "",
     dryRun: opts.dryRun ?? false,
     verbose: opts.verbose ?? false,
+    html: opts.html ?? false,
   };
 }

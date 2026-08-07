@@ -1,7 +1,30 @@
-// FILE: src/analyzers/eslint.ts
-import { execa } from "execa";
+// src/analyzers/eslint.ts
+import { ESLint } from "eslint";
 import { createHash } from "node:crypto";
-import type { Issue } from "../core/types.js";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { Issue } from "../core/types";
+
+const EXCLUDES = [
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/.next/**",
+  "**/coverage/**",
+  "**/ai-auditor-report/**",
+];
+
+const CONFIG_FILES = [
+  ".eslintrc",
+  ".eslintrc.cjs",
+  ".eslintrc.json",
+  ".eslintrc.yml",
+  ".eslintrc.yaml",
+  ".eslintrc",
+  "eslint.config",
+  "eslint.config.mjs",
+  "eslint.config.cjs",
+];
 
 function makeId(
   tool: string,
@@ -9,41 +32,50 @@ function makeId(
   filePath: string,
   line: number,
   msg: string,
-): string {
+) {
   return createHash("sha256")
     .update(`${tool}:${ruleId}:${filePath}:${line}:${msg}`)
     .digest("hex")
     .slice(0, 16);
 }
 
+function mapSeverity(sev: number): Issue["severity"] {
+  return sev === 2 ? "high" : sev === 1 ? "medium" : "low";
+}
+
+function mapCategory(ruleId: string): Issue["category"] {
+  if (ruleId.includes("security")) return "security";
+  if (ruleId.includes("test")) return "test";
+  return "style";
+}
+
 export async function runEslint(cwd: string): Promise<Issue[]> {
   try {
-    const { stdout } = await execa(
-      "npx",
-      ["eslint", ".", "-f", "json", "--no-error-on-unmatched-pattern"],
-      {
-        cwd,
-        reject: false,
-      },
-    );
-    const results: Array<{
-      filePath: string;
-      messages: Array<{
-        ruleId?: string;
-        message: string;
-        severity: number;
-        line?: number;
-        column?: number;
-        endLine?: number;
-        endColumn?: number;
-        fix?: unknown;
-      }>;
-    }> = JSON.parse(stdout);
+    const hasConfig = CONFIG_FILES.some((f) => existsSync(join(cwd, f)));
+
+    const eslint = new ESLint({
+      cwd,
+      useEslintrc: hasConfig,
+      resolvePluginsRelativeTo: __dirname,
+      ignorePattern: EXCLUDES,
+      errorOnUnmatchedPattern: false,
+      ...(hasConfig
+        ? {}
+        : {
+            overrideConfig: {
+              parserOptions: { ecmaVersion: "latest", sourceType: "module" },
+              env: { node: true, es2022: true, browser: true },
+              extends: ["eslint:recommended"],
+            },
+          }),
+    } as ConstructorParameters<typeof ESLint>[0]);
+
+    const results = await eslint.lintFiles(["."]);
     const issues: Issue[] = [];
+
     for (const file of results) {
       for (const msg of file.messages) {
         const ruleId = msg.ruleId ?? "unknown";
-        const sev = msg.severity === 2 ? "high" : "low";
         issues.push({
           id: makeId(
             "eslint",
@@ -55,12 +87,8 @@ export async function runEslint(cwd: string): Promise<Issue[]> {
           tool: "eslint",
           ruleId,
           message: msg.message,
-          severity: sev,
-          category: ruleId.includes("security")
-            ? "security"
-            : ruleId.includes("test")
-              ? "test"
-              : "style",
+          severity: mapSeverity(msg.severity),
+          category: mapCategory(ruleId),
           location: {
             filePath: file.filePath,
             startLine: msg.line,
@@ -73,13 +101,13 @@ export async function runEslint(cwd: string): Promise<Issue[]> {
       }
     }
     return issues;
-  } catch {
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
     return [
       {
-        id: makeId("custom", "missing-eslint", "", 0, "ESLint not available"),
+        id: makeId("custom", "eslint-failure", "", 0, "ESLint failed"),
         tool: "custom",
-        message:
-          "ESLint is not installed or failed to run. Install eslint to enable linting.",
+        message: `ESLint failed to run: ${detail}`,
         severity: "medium",
         category: "maintainability",
       },

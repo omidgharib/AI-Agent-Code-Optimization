@@ -1,9 +1,9 @@
 // FILE: src/cli/index.ts
 import { Command } from "commander";
-import { buildConfig } from "../core/config.js";
-import { runAudit } from "../core/engine.js";
-import { setVerbose } from "../core/logger.js";
-import type { Severity } from "../core/types.js";
+import { buildConfig } from "../core/config";
+import { runAudit } from "../core/engine";
+import { setVerbose } from "../core/logger";
+import type { Severity } from "../core/types";
 
 const program = new Command();
 
@@ -27,6 +27,11 @@ program
   .option("--api-key <key>", "LLM API key")
   .option("--dry-run", "Preview fixes without applying")
   .option("--verbose", "Verbose output")
+  .option(
+    "--url <url>",
+    "URL to audit with Lighthouse (e.g. http://localhost:3000)",
+  )
+  .option("--html", "Write HTML report")
   .action(async (auditPath: string | undefined, opts) => {
     if (opts.verbose) setVerbose(true);
 

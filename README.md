@@ -7,8 +7,9 @@ CLI tool for AI-powered code auditing and auto-fixing.
 ## Requirements
 
 - Node.js >= 20
-- ESLint configured in your project (for lint analysis)
 - `tsconfig.json` present (for TypeScript analysis)
+
+> **Note:** ESLint is bundled with `ai-auditor` — you do **not** need ESLint installed in your target project. If the project has its own ESLint config, it will be used automatically; otherwise `eslint:recommended` is applied as a fallback.
 
 ## Installation
 
@@ -41,12 +42,16 @@ ai-auditor audit . --exclude node_modules dist .next
 # Verbose output
 ai-auditor audit . --verbose
 
+# Include Lighthouse performance/SEO audit for a live URL
+ai-auditor audit . --url https://example.com --json --md
+
 ## Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--json` | false | Write `ai-auditor-report/report.json` |
 | `--md` | false | Write `ai-auditor-report/report.md` |
+| `--url <url>` | - | Run Lighthouse (performance/SEO) audit against this URL |
 | `--fix` | false | Auto-fix issues via LLM |
 | `--max-fix-iterations <n>` | 2 | Max fix loop iterations |
 | `--include <pattern...>` | - | Glob patterns to include |
@@ -65,6 +70,15 @@ ai-auditor audit . --verbose
 | `OPENAI_API_KEY` | API key for LLM |
 | `AI_AUDITOR_BASE_URL` | Override LLM base URL |
 | `AI_AUDITOR_MODEL` | Override LLM model |
+
+## Analyzers
+
+| Analyzer | Requires external install | Notes |
+|----------|---------------------------|-------|
+| ESLint | No (bundled) | Uses project config if present, else `eslint:recommended` |
+| TypeScript (tsc) | No (bundled) | Requires `tsconfig.json` in target project |
+| Playwright | No (bundled) | Analyzes test files if present |
+| Lighthouse | No (bundled) | Runs only when `--url` is provided; checks performance & SEO |
 
 ## Exit Codes
 

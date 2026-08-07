@@ -1,7 +1,7 @@
 // FILE: src/verify/verify.ts
-import { runEslint } from "../analyzers/eslint.js";
-import { runTsc } from "../analyzers/tsc.js";
-import type { Issue } from "../core/types.js";
+import { runEslint } from "../analyzers/eslint";
+import { runTsc } from "../analyzers/tsc";
+import type { Issue } from "../core/types";
 
 export async function verify(
   cwd: string,

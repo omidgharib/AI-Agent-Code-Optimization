@@ -2,7 +2,7 @@
 import { execa } from "execa";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import type { Issue } from "../core/types.js";
+import type { Issue } from "../core/types";
 
 function makeId(
   filePath: string,
