@@ -11,6 +11,7 @@ import { requestFix } from "../fix/llmClient";
 import { applyDiff } from "../fix/diffApplier";
 import { writeReport } from "../report/report";
 import { logger } from "./logger";
+import type { LighthouseReport } from "../report/summary";
 import type {
   AuditConfig,
   PrioritizedIssue,
@@ -18,28 +19,40 @@ import type {
   Issue,
 } from "./types";
 
+interface AnalyzeResult {
+  issues: Issue[];
+  lighthouse?: LighthouseReport;
+}
+
 async function analyze(
   cwd: string,
   url?: string,
   includeLighthouse = true,
-): Promise<Issue[]> {
+): Promise<AnalyzeResult> {
   const tasks: Promise<Issue[]>[] = [
     runEslint(cwd),
     runTsc(cwd),
     runPlaywright(cwd),
   ];
 
+  let lighthouse: LighthouseReport | undefined;
+
   if (url && includeLighthouse) {
     tasks.push(
-      runLighthouse(url).catch((e) => {
-        logger.warn(`Lighthouse skipped: ${String(e)}`);
-        return [];
-      }),
+      runLighthouse(url)
+        .then((res) => {
+          lighthouse = res.lhr;
+          return res.issues;
+        })
+        .catch((e) => {
+          logger.warn(`Lighthouse skipped: ${String(e)}`);
+          return [];
+        }),
     );
   }
 
   const results = await Promise.all(tasks);
-  return normalize(results.flat());
+  return { issues: normalize(results.flat()), lighthouse };
 }
 
 export async function runAudit(
@@ -51,7 +64,9 @@ export async function runAudit(
   const verificationErrors: string[] = [];
 
   try {
-    let issues = await analyze(repoRoot, config.baseUrl);
+    const initialAnalysis = await analyze(repoRoot, config.url);
+    let issues = initialAnalysis.issues;
+    const lighthouse = initialAnalysis.lighthouse;
 
     if (config.severity) {
       const order = ["low", "medium", "high", "critical"];
@@ -130,7 +145,7 @@ export async function runAudit(
         // Lighthouse is skipped on re-runs to avoid repeated
         // browser launches during the fix loop; it only runs once
         // on the initial pass.
-        const newIssues = await analyze(repoRoot, config.baseUrl, false);
+        const newIssues = (await analyze(repoRoot, config.url, false)).issues;
         const newPrioritized = prioritize(newIssues);
         if (newPrioritized.length >= prioritized.length) {
           logger.info("No improvement detected, stopping fix loop");
@@ -151,6 +166,7 @@ export async function runAudit(
         html: config.html ?? false,
         outDir,
       },
+      lighthouse,
     );
 
     if (config.json || config.md) logger.info(`Report written to ${outDir}`);

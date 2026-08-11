@@ -66,6 +66,7 @@ export interface FixResponse {
 
 export interface AuditConfig {
   path: string;
+  url?: string;
   json: boolean;
   md: boolean;
   fix: boolean;

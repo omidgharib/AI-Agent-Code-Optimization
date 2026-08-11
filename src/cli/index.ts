@@ -37,6 +37,7 @@ program
 
     const config = buildConfig({
       path: auditPath ?? process.cwd(),
+      url: opts.url,
       json: opts.json ?? false,
       md: opts.md ?? false,
       fix: opts.fix ?? false,
@@ -49,6 +50,7 @@ program
       apiKey: opts.apiKey,
       dryRun: opts.dryRun ?? false,
       verbose: opts.verbose ?? false,
+      html: opts.html ?? false,
     });
 
     const { exitCode } = await runAudit(config);

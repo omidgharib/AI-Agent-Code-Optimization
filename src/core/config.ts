@@ -6,6 +6,7 @@ export function buildConfig(
 ): AuditConfig {
   return {
     path: opts.path ?? process.cwd(),
+    url: opts.url,
     json: opts.json ?? false,
     md: opts.md ?? false,
     fix: opts.fix ?? false,
