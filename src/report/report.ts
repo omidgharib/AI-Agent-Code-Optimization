@@ -3,6 +3,7 @@ import path from "node:path";
 import type { PrioritizedIssue, FixResponse } from "../core/types";
 import {
   buildSummary,
+  groupByTool,
   type LighthouseAudit,
   type LighthouseDetails,
   type LighthouseReport,
@@ -76,7 +77,8 @@ export async function writeReport(
 
   const data: ReportData = {
     summary: buildSummary(issues),
-    topIssues: issues.slice(0, 200),
+    topIssues: issues,
+    tools: groupByTool(issues),
     patches: patches.map((p) => ({
       description: p.description,
       touches: p.touches,

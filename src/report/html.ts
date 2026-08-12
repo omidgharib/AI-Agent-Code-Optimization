@@ -1,3 +1,4 @@
+import type { PrioritizedIssue } from "../core/types";
 import type {
   LighthouseAudit,
   LighthouseCategory,
@@ -414,6 +415,53 @@ function lighthouseSections(lhr: LighthouseReport): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* Issue sections (ESLint / TypeScript / other tools)                  */
+/* ------------------------------------------------------------------ */
+
+function issueRow(issue: PrioritizedIssue, index: number): string {
+  const loc = issue.location;
+  const file = loc?.filePath ?? "-";
+  const line = loc?.startLine ?? "-";
+  const col = loc?.startColumn ?? "-";
+  const end =
+    loc?.endLine !== undefined
+      ? `${loc.endLine}${loc.endColumn !== undefined ? `:${loc.endColumn}` : ""}`
+      : "-";
+  const color = severityColor(issue.severity);
+  const rule = issue.ruleId ?? "-";
+  const snippet = issue.evidence?.snippet;
+  return `<tr>
+      <td class="num">${index + 1}</td>
+      <td><span class="badge" style="background:${color}">${esc(issue.severity)}</span></td>
+      <td><span class="cat">${esc(issue.category)}</span></td>
+      <td class="rule" title="${esc(rule)}">${esc(rule)}</td>
+      <td class="filepath"><span class="file">${esc(file)}</span>${line !== "-" ? `<span class="loc">:${line}${col !== "-" ? `:${col}` : ""}</span>` : ""}</td>
+      <td>${line}</td>
+      <td>${col}</td>
+      <td>${esc(String(end))}</td>
+      <td>${issue.fix?.canAutoFix ? '<span class="fixable">✓</span>' : '<span class="dim">–</span>'}</td>
+      <td class="msg">${esc(issue.message)}</td>
+      <td>${snippet ? `<code class="snippet">${esc(snippet)}</code>` : '<span class="dim">–</span>'}</td>
+    </tr>`;
+}
+
+function issuesTable(issues: PrioritizedIssue[]): string {
+  const rows = issues.map((issue, i) => issueRow(issue, i)).join("\n");
+  return `<table>
+      <thead><tr><th>#</th><th>Severity</th><th>Category</th><th>Rule / Code</th><th>File:Line:Col</th><th>Line</th><th>Col</th><th>End</th><th>Fixable</th><th>Message</th><th>Snippet</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function toolSection(title: string, issues: PrioritizedIssue[]): string {
+  if (issues.length === 0) return "";
+  return `<div class="section">
+    <div class="section-header">${esc(title)} (${issues.length})</div>
+    ${issuesTable(issues)}
+  </div>`;
+}
+
+/* ------------------------------------------------------------------ */
 /* Main report                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -479,28 +527,6 @@ const UI_SCRIPT = `
 
 export function toHtml(data: ReportData): string {
   const severityOrder = ["critical", "high", "medium", "low"];
-  const rows = data.topIssues
-    .slice(0, 200)
-    .map((issue, i) => {
-      const file = issue.location?.filePath ?? "-";
-      const line = issue.location?.startLine ?? "-";
-      const col = issue.location?.startColumn ?? "-";
-      const color = severityColor(issue.severity);
-      const fileRef =
-        line !== "-"
-          ? `<span class="file">${file}</span><span class="loc">:${line}${col !== "-" ? `:${col}` : ""}</span>`
-          : `<span class="file">${file}</span>`;
-      return `<tr>
-      <td class="num">${i + 1}</td>
-      <td><span class="badge" style="background:${color}">${issue.severity}</span></td>
-      <td><span class="cat">${issue.category}</span></td>
-      <td>${issue.tool}</td>
-      <td class="rule" title="${issue.ruleId ?? "-"}">${issue.ruleId ?? "-"}</td>
-      <td class="filepath">${fileRef}</td>
-      <td class="msg">${issue.message.replace(/</g, "&lt;")}</td>
-    </tr>`;
-    })
-    .join("\n");
 
   const severityBadges = severityOrder
     .filter((s) => data.summary.bySeverity[s])
@@ -510,14 +536,34 @@ export function toHtml(data: ReportData): string {
     )
     .join("");
 
+  const toolCards = Object.entries(data.summary.byTool)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(
+      ([tool, count]) =>
+        `<div class="stat-card"><span class="badge lg tool">${esc(tool)}</span><span class="count">${count}</span></div>`,
+    )
+    .join("");
+
   const patchRows = data.patches
     .map(
       (p) =>
-        `<tr><td>${p.description}</td><td>${p.touches.map((f) => `<code>${f}</code>`).join(", ")}</td></tr>`,
+        `<tr><td>${esc(p.description)}</td><td>${p.touches.map((f) => `<code>${esc(f)}</code>`).join(", ")}</td></tr>`,
     )
     .join("");
 
   const lighthouseHtml = data.lighthouse ? lighthouseSections(data.lighthouse) : "";
+
+  const tools = data.tools ?? {};
+  const toolSections = [
+    toolSection("ESLint", tools.eslint ?? []),
+    toolSection("TypeScript (tsc)", tools.tsc ?? []),
+    toolSection(
+      "Other Tools",
+      Object.entries(tools)
+        .filter(([t]) => t !== "eslint" && t !== "tsc")
+        .flatMap(([, list]) => list),
+    ),
+  ].join("\n");
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -533,6 +579,7 @@ export function toHtml(data: ReportData): string {
   header .subtitle{color:#94a3b8;font-size:.875rem;margin-top:2px}
   .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600;color:#fff;text-transform:uppercase;letter-spacing:.05em}
   .badge.lg{font-size:.875rem;padding:4px 12px}
+  .badge.tool{background:#1d4ed8}
   .container{max-width:1400px;margin:0 auto;padding:24px 32px}
   .stats{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px}
   .stat-card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:12px;min-width:140px}
@@ -549,11 +596,12 @@ export function toHtml(data: ReportData): string {
   tr:hover td{background:#162032}
   .num{color:#64748b;font-size:.8rem;width:36px}
   .rule{font-family:'SF Mono',Consolas,monospace;font-size:.78rem;color:#7dd3fc;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .filepath{font-family:'SF Mono',Consolas,monospace;font-size:.78rem;max-width:260px}
+  .filepath{font-family:'SF Mono',Consolas,monospace;font-size:.78rem;max-width:300px}
   .file{color:#a5b4fc}
   .loc{color:#f472b6;font-weight:600}
   .msg{color:#cbd5e1;max-width:400px;line-height:1.4}
   .cat{display:inline-block;padding:1px 7px;border-radius:3px;font-size:.72rem;background:#0f172a;color:#94a3b8;border:1px solid #334155}
+  .fixable{color:#4ade80;font-weight:700}
   .verification{padding:16px 20px;display:flex;align-items:center;gap:10px}
   .pass{color:#4ade80;font-weight:600}
   .fail{color:#f87171;font-weight:600}
@@ -637,19 +685,14 @@ export function toHtml(data: ReportData): string {
   <div class="stats">
     <div class="total-card"><span class="label">Total Issues</span><span class="num">${data.summary.total}</span></div>
     ${severityBadges}
+    ${toolCards}
   </div>
   ${lighthouseHtml}
-  <div class="section">
-    <div class="section-header">Issues (${data.topIssues.length})</div>
-    ${
-      data.topIssues.length === 0
-        ? '<div class="empty">No issues found 🎉</div>'
-        : `<table>
-      <thead><tr><th>#</th><th>Severity</th><th>Category</th><th>Tool</th><th>Rule</th><th>File : Line : Col</th><th>Message</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`
-    }
-  </div>
+  ${
+    data.summary.total === 0
+      ? '<div class="section"><div class="section-header">Issues</div><div class="empty">No issues found 🎉</div></div>'
+      : toolSections
+  }
   ${
     data.patches.length > 0
       ? `<div class="section">

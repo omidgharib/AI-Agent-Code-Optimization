@@ -85,6 +85,7 @@ export interface ReportData {
     byTool: Record<string, number>;
   };
   topIssues: PrioritizedIssue[];
+  tools: Record<string, PrioritizedIssue[]>;
   patches: { description: string; touches: string[] }[];
   verification: { passed: boolean; errors: string[] };
   lighthouse?: LighthouseReport; // ← فیلد جدید (اختیاری)
@@ -102,4 +103,14 @@ export function buildSummary(
     byTool[i.tool] = (byTool[i.tool] ?? 0) + 1;
   }
   return { total: issues.length, bySeverity, byCategory, byTool };
+}
+
+export function groupByTool(
+  issues: PrioritizedIssue[],
+): Record<string, PrioritizedIssue[]> {
+  const tools: Record<string, PrioritizedIssue[]> = {};
+  for (const i of issues) {
+    (tools[i.tool] ??= []).push(i);
+  }
+  return tools;
 }
