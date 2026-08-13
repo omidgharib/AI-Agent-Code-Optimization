@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { buildConfig } from "../core/config";
 import { runAudit } from "../core/engine";
 import { setVerbose } from "../core/logger";
+import { listModels } from "../core/models";
 import type { Severity } from "../core/types";
 
 const program = new Command();
@@ -22,9 +23,11 @@ program
   .option("--include <pattern...>", "Include glob patterns")
   .option("--exclude <pattern...>", "Exclude glob patterns")
   .option("--severity <level>", "Minimum severity (low|medium|high|critical)")
-  .option("--model <model>", "LLM model name")
+  .option("--model <model>", "LLM model name (or provider preset id)")
+  .option("--provider <id>", "Model provider preset (see --list-models)")
   .option("--base-url <url>", "LLM base URL")
   .option("--api-key <key>", "LLM API key")
+  .option("--list-models", "List available model providers and exit")
   .option("--dry-run", "Preview fixes without applying")
   .option("--verbose", "Verbose output")
   .option(
@@ -34,6 +37,11 @@ program
   .option("--html", "Write HTML report")
   .action(async (auditPath: string | undefined, opts) => {
     if (opts.verbose) setVerbose(true);
+
+    if (opts.listModels) {
+      console.log(listModels());
+      process.exit(0);
+    }
 
     const config = buildConfig({
       path: auditPath ?? process.cwd(),
@@ -46,6 +54,7 @@ program
       exclude: opts.exclude,
       severity: opts.severity as Severity | undefined,
       model: opts.model,
+      provider: opts.provider,
       baseUrl: opts.baseUrl,
       apiKey: opts.apiKey,
       dryRun: opts.dryRun ?? false,

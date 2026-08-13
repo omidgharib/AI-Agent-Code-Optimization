@@ -1,6 +1,7 @@
 // FILE: src/fix/llmClient.ts
 import type { FixRequest, FixResponse } from "../core/types";
 import { FixResponseSchema } from "../core/schemas";
+import { buildChatUrl } from "../core/models";
 
 export interface LLMClientConfig {
   baseUrl: string;
@@ -12,7 +13,7 @@ export async function requestFix(
   config: LLMClientConfig,
   req: FixRequest,
 ): Promise<FixResponse> {
-  const url = `${config.baseUrl}/v1/chat/completions`;
+  const url = buildChatUrl(config.baseUrl);
   const body = {
     model: config.model,
     messages: [
@@ -25,12 +26,14 @@ export async function requestFix(
     ],
   };
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
+    headers,
     body: JSON.stringify(body),
   });
 

@@ -1,9 +1,17 @@
 // FILE: src/core/config.ts
 import type { AuditConfig } from "./types";
+import { resolveModel } from "./models";
 
 export function buildConfig(
   opts: Partial<AuditConfig> & { path?: string },
 ): AuditConfig {
+  const model = resolveModel({
+    provider: opts.provider,
+    model: opts.model,
+    baseUrl: opts.baseUrl,
+    apiKey: opts.apiKey,
+  });
+
   return {
     path: opts.path ?? process.cwd(),
     url: opts.url,
@@ -20,12 +28,11 @@ export function buildConfig(
       "ai-auditor-report",
     ],
     severity: opts.severity,
-    model: opts.model ?? process.env.AI_AUDITOR_MODEL ?? "gpt-4.1-mini",
-    baseUrl:
-      opts.baseUrl ??
-      process.env.AI_AUDITOR_BASE_URL ??
-      "https://api.openai.com",
-    apiKey: opts.apiKey ?? process.env.OPENAI_API_KEY ?? "",
+    model: model.model,
+    provider: model.provider,
+    keyRequired: model.keyRequired,
+    baseUrl: model.baseUrl,
+    apiKey: model.apiKey,
     dryRun: opts.dryRun ?? false,
     verbose: opts.verbose ?? false,
     html: opts.html ?? false,

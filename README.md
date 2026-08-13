@@ -30,6 +30,15 @@ ai-auditor audit . --json --md
 # Auto-fix with LLM
 ai-auditor audit . --fix --api-key sk-... --model gpt-4.1-mini
 
+# Auto-fix with a free local model (Ollama, no API key)
+ai-auditor audit . --fix --provider ollama
+
+# Auto-fix with a free hosted model (e.g. Groq free tier)
+ai-auditor audit . --fix --provider groq --api-key gsk-...
+
+# List all model providers
+ai-auditor audit . --list-models
+
 # Filter by severity
 ai-auditor audit . --severity high
 
@@ -57,19 +66,57 @@ ai-auditor audit . --url https://example.com --json --md
 | `--include <pattern...>` | - | Glob patterns to include |
 | `--exclude <pattern...>` | node_modules,dist,.next,coverage,ai-auditor-report | Patterns to exclude |
 | `--severity <level>` | - | Minimum severity: low\|medium\|high\|critical |
-| `--model <model>` | gpt-4.1-mini | LLM model name |
-| `--base-url <url>` | https://api.openai.com | OpenAI-compatible base URL |
+| `--model <model>` | llama3.2 | LLM model name |
+| `--provider <id>` | auto | Model provider preset (see Models & Providers below) |
+| `--base-url <url>` | provider default | OpenAI-compatible base URL |
 | `--api-key <key>` | - | API key |
+| `--list-models` | - | Print available model providers and exit |
 | `--dry-run` | false | Preview fixes without writing |
 | `--verbose` | false | Verbose logging |
+
+## Models & Providers
+
+You can pass any OpenAI-compatible model with `--model`, `--base-url`, and
+`--api-key`, or pick a provider preset with `--provider <id>`. Run
+`ai-auditor audit . --list-models` to see all presets.
+
+Built-in presets (with free defaults):
+
+| Provider | Default model | Free | Key required | Key env var |
+|----------|---------------|------|--------------|-------------|
+| `ollama` | llama3.2 | yes (local) | no | - |
+| `openrouter` | openai/gpt-oss-20b:free | yes | yes | `OPENROUTER_API_KEY` |
+| `groq` | llama-3.3-70b-versatile | yes | yes | `GROQ_API_KEY` |
+| `gemini` | gemini-2.5-flash | yes | yes | `GEMINI_API_KEY` |
+| `mistral` | open-mistral-nemo | yes | yes | `MISTRAL_API_KEY` |
+| `cerebras` | llama-3.3-70b | yes | yes | `CEREBRAS_API_KEY` |
+| `zhipu` | glm-4-flash | yes | yes | `ZHIPU_API_KEY` |
+| `openai` | gpt-4.1-mini | no | yes | `OPENAI_API_KEY` |
+| `deepseek` | deepseek-chat | no | yes | `DEEPSEEK_API_KEY` |
+| `custom` | gpt-4.1-mini | - | depends | - |
+
+**Default resolution:** if no `--provider`/`--model`/`--base-url` is given, a
+set `OPENAI_API_KEY` selects `openai` (gpt-4.1-mini). With no key configured,
+the free local `ollama` provider is used so `--fix` works out of the box —
+just make sure Ollama is running (`ollama serve`) and the model is pulled
+(`ollama pull llama3.2`). Local endpoints (`localhost`/`127.0.0.1`) never
+require an API key.
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | API key for LLM |
+| `OPENAI_API_KEY` | API key for OpenAI |
+| `OPENROUTER_API_KEY` | API key for OpenRouter free models |
+| `GROQ_API_KEY` | API key for Groq free tier |
+| `GEMINI_API_KEY` | API key for Google AI Studio free tier |
+| `MISTRAL_API_KEY` | API key for Mistral free tier |
+| `CEREBRAS_API_KEY` | API key for Cerebras free tier |
+| `ZHIPU_API_KEY` | API key for Zhipu GLM-4-Flash (free) |
+| `DEEPSEEK_API_KEY` | API key for DeepSeek |
 | `AI_AUDITOR_BASE_URL` | Override LLM base URL |
 | `AI_AUDITOR_MODEL` | Override LLM model |
+| `AI_AUDITOR_PROVIDER` | Override model provider preset |
 
 ## Analyzers
 

@@ -78,13 +78,16 @@ export async function runAudit(
     logger.info(`Found ${prioritized.length} issues`);
 
     if (config.fix) {
-      if (!config.apiKey) {
-        logger.error("--fix requires an API key (--api-key or OPENAI_API_KEY)");
+      if (config.keyRequired && !config.apiKey) {
+        logger.error(
+          `--fix requires an API key for provider "${config.provider}" (set --api-key or the provider's key env var)`,
+        );
         return { exitCode: 2 };
       }
 
       for (let iter = 0; iter < config.maxFixIterations; iter++) {
-        const selected = selectIssuesForFix(prioritized);
+        const planned = selectIssuesForFix(prioritized);
+        const selected = planned.flatMap((p) => p.issues);
         if (selected.length === 0) break;
 
         logger.info(
@@ -114,6 +117,18 @@ export async function runAudit(
           );
         } catch (e) {
           logger.error(`LLM request failed: ${String(e)}`);
+          if (config.provider === "ollama") {
+            logger.warn(
+              "Ollama provider: make sure Ollama is running (`ollama serve`) and the model is pulled (`ollama pull llama3.2`), or pick another provider with --provider / --list-models.",
+            );
+          } else if (
+            config.provider === "openrouter" &&
+            String(e).includes("404")
+          ) {
+            logger.warn(
+              `Model "${config.model}" not found on OpenRouter. Free models rotate — run --list-models or check https://openrouter.ai/models?max_price=0 for a current free model.`,
+            );
+          }
           verificationErrors.push(String(e));
           break;
         }

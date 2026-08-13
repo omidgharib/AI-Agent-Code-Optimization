@@ -17,6 +17,11 @@ export type Category =
   | "style"
   | "test";
 export type Effort = "xs" | "s" | "m" | "l";
+export type FixStrategy =
+  | "mechanical" // eslint --fix, no LLM, deterministic verify
+  | "local" // LLM, single file, small context
+  | "cross-file" // LLM, multiple files, needs care/approval
+  | "advisory"; // lighthouse et al., recommendations only, NO diff
 
 export interface Issue {
   id: string;
@@ -33,7 +38,7 @@ export interface Issue {
     endColumn?: number;
   };
   evidence?: { snippet?: string; relatedFiles?: string[]; url?: string };
-  fix?: { canAutoFix: boolean; hint?: string };
+  fix?: { canAutoFix: boolean; hint?: string; strategy?: FixStrategy };
   meta?: Record<string, unknown>;
 }
 
@@ -75,6 +80,8 @@ export interface AuditConfig {
   exclude: string[];
   severity?: Severity;
   model: string;
+  provider: string;
+  keyRequired: boolean;
   baseUrl: string;
   apiKey: string;
   dryRun: boolean;
