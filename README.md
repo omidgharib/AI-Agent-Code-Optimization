@@ -54,6 +54,15 @@ ai-auditor audit . --verbose
 # Include Lighthouse performance/SEO audit for a live URL
 ai-auditor audit . --url https://example.com --json --md
 
+# Auto-fix with a free local model (Ollama, no API key)
+ai-auditor audit . --fix --provider ollama
+
+# Auto-fix with a free hosted model (e.g. Groq free tier)
+ai-auditor audit . --fix --provider groq --api-key gsk-...
+
+# Auto-fix with any OpenAI-compatible model
+ai-auditor audit . --fix --model gpt-4o --base-url https://api.openai.com
+
 ## Flags
 
 | Flag | Default | Description |
@@ -90,17 +99,22 @@ Built-in presets (with free defaults):
 | `gemini` | gemini-2.5-flash | yes | yes | `GEMINI_API_KEY` |
 | `mistral` | open-mistral-nemo | yes | yes | `MISTRAL_API_KEY` |
 | `cerebras` | llama-3.3-70b | yes | yes | `CEREBRAS_API_KEY` |
-| `zhipu` | glm-4-flash | yes | yes | `ZHIPU_API_KEY` |
+| `zhipu` | glm-4.7-flash | yes | yes | `ZHIPU_API_KEY` |
+| `dashscope` | qwen-flash | yes | yes | `DASHSCOPE_API_KEY` |
+| `cloudflare` | @cf/qwen/qwen2.5-coder-32b-instruct | yes | yes | `CF_API_TOKEN` (+ `CF_ACCOUNT_ID`, `CF_GATEWAY_SLUG`) |
 | `openai` | gpt-4.1-mini | no | yes | `OPENAI_API_KEY` |
 | `deepseek` | deepseek-chat | no | yes | `DEEPSEEK_API_KEY` |
 | `custom` | gpt-4.1-mini | - | depends | - |
 
 **Default resolution:** if no `--provider`/`--model`/`--base-url` is given, a
-set `OPENAI_API_KEY` selects `openai` (gpt-4.1-mini). With no key configured,
-the free local `ollama` provider is used so `--fix` works out of the box —
-just make sure Ollama is running (`ollama serve`) and the model is pulled
-(`ollama pull llama3.2`). Local endpoints (`localhost`/`127.0.0.1`) never
-require an API key.
+set `OPENAI_API_KEY` selects `openai` (gpt-4.1-mini); otherwise the first free
+provider whose key env var is set is auto-selected (`DASHSCOPE_API_KEY`,
+`ZHIPU_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`,
+`MISTRAL_API_KEY`, `CEREBRAS_API_KEY`, `CF_API_TOKEN` — in that order). With no
+key configured at all, the free local `ollama` provider is used so `--fix`
+works out of the box — just make sure Ollama is running (`ollama serve`) and the
+model is pulled (`ollama pull llama3.2`). Local endpoints
+(`localhost`/`127.0.0.1`) never require an API key.
 
 ## Environment Variables
 
@@ -112,7 +126,11 @@ require an API key.
 | `GEMINI_API_KEY` | API key for Google AI Studio free tier |
 | `MISTRAL_API_KEY` | API key for Mistral free tier |
 | `CEREBRAS_API_KEY` | API key for Cerebras free tier |
-| `ZHIPU_API_KEY` | API key for Zhipu GLM-4-Flash (free) |
+| `ZHIPU_API_KEY` | API key for Zhipu GLM free flash model |
+| `DASHSCOPE_API_KEY` | API key for Alibaba Qwen (qwen-flash, free) |
+| `CF_API_TOKEN` | Cloudflare API token (Workers AI) |
+| `CF_ACCOUNT_ID` | Cloudflare account id (needed for AI Gateway) |
+| `CF_GATEWAY_SLUG` | Cloudflare AI Gateway slug (needed for AI Gateway) |
 | `DEEPSEEK_API_KEY` | API key for DeepSeek |
 | `AI_AUDITOR_BASE_URL` | Override LLM base URL |
 | `AI_AUDITOR_MODEL` | Override LLM model |

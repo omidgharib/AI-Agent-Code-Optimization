@@ -113,14 +113,36 @@ export const MODEL_PROVIDERS: Record<string, ModelProvider> = {
   zhipu: {
     id: "zhipu",
     label: "Zhipu GLM (free)",
-    model: "glm-4-flash",
+    model: "glm-4.7-flash",
     baseUrl:
       "https://open.bigmodel.cn/api/paas/v4/chat/completions",
     keyRequired: true,
     keyEnv: "ZHIPU_API_KEY",
     free: true,
     description:
-      "Zhipu AI GLM-4-Flash, a genuinely free model via an OpenAI-compatible endpoint. Widely accessible (no geo-blocking). Free API key from open.bigmodel.cn.",
+      "Zhipu AI GLM free flash model via an OpenAI-compatible endpoint. Widely accessible (no geo-blocking). Free API key from open.bigmodel.cn. The free model is often rate-limited; retry or use another provider.",
+  },
+  dashscope: {
+    id: "dashscope",
+    label: "Alibaba Qwen (free qwen-flash)",
+    model: "qwen-flash",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    keyRequired: true,
+    keyEnv: "DASHSCOPE_API_KEY",
+    free: true,
+    description:
+      "Alibaba Cloud Bailian/DashScope with the genuinely free qwen-flash model via its OpenAI-compatible endpoint. Free API key from bailian console.",
+  },
+  cloudflare: {
+    id: "cloudflare",
+    label: "Cloudflare Workers AI (free)",
+    model: "@cf/qwen/qwen2.5-coder-32b-instruct",
+    baseUrl: "",
+    keyRequired: true,
+    keyEnv: "CF_API_TOKEN",
+    free: true,
+    description:
+      "Cloudflare AI Gateway over Workers AI free tier. Email-only signup, no card. Requires CF_ACCOUNT_ID, CF_GATEWAY_SLUG and CF_API_TOKEN env vars.",
   },
   custom: {
     id: "custom",
@@ -135,6 +157,25 @@ export const MODEL_PROVIDERS: Record<string, ModelProvider> = {
 };
 
 const LOCAL_ENDPOINT = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/;
+
+// Order of preference when auto-selecting a provider from configured keys.
+const FREE_KEY_ORDER: Array<{ envs: string[]; provider: string }> = [
+  { envs: ["DASHSCOPE_API_KEY"], provider: "dashscope" },
+  { envs: ["ZHIPU_API_KEY"], provider: "zhipu" },
+  { envs: ["OPENROUTER_API_KEY"], provider: "openrouter" },
+  { envs: ["GROQ_API_KEY"], provider: "groq" },
+  { envs: ["GEMINI_API_KEY"], provider: "gemini" },
+  { envs: ["MISTRAL_API_KEY"], provider: "mistral" },
+  { envs: ["CEREBRAS_API_KEY"], provider: "cerebras" },
+  { envs: ["CF_API_TOKEN"], provider: "cloudflare" },
+];
+
+function pickFreeProviderFromEnv(): string | undefined {
+  for (const { envs, provider } of FREE_KEY_ORDER) {
+    if (envs.some((e) => process.env[e])) return provider;
+  }
+  return undefined;
+}
 
 export function buildChatUrl(baseUrl: string): string {
   const base = baseUrl.replace(/\/+$/, "");
@@ -157,9 +198,6 @@ export function resolveModel(opts: {
     );
   }
 
-  const envKey = preset?.keyEnv ? process.env[preset.keyEnv] : undefined;
-  const apiKey = opts.apiKey ?? envKey ?? process.env.OPENAI_API_KEY ?? "";
-
   const hasExplicitModel = Boolean(opts.model || process.env.AI_AUDITOR_MODEL);
   const hasExplicitBase = Boolean(
     opts.baseUrl || process.env.AI_AUDITOR_BASE_URL,
@@ -168,8 +206,9 @@ export function resolveModel(opts: {
   let effectiveProvider = preset?.id;
   if (!effectiveProvider) {
     if (hasExplicitModel || hasExplicitBase) effectiveProvider = "custom";
-    else if (apiKey) effectiveProvider = DEFAULT_PROVIDER;
-    else effectiveProvider = FREE_DEFAULT_PROVIDER;
+    else effectiveProvider =
+      pickFreeProviderFromEnv() ??
+      (process.env.OPENAI_API_KEY ? DEFAULT_PROVIDER : FREE_DEFAULT_PROVIDER);
   }
 
   const effective =
@@ -177,10 +216,31 @@ export function resolveModel(opts: {
     MODEL_PROVIDERS[effectiveProvider] ??
     MODEL_PROVIDERS[DEFAULT_PROVIDER];
 
+  const apiKey =
+    opts.apiKey ??
+    (effective.keyEnv ? process.env[effective.keyEnv] : undefined) ??
+    process.env.OPENAI_API_KEY ??
+    "";
+
   const model =
     opts.model ?? process.env.AI_AUDITOR_MODEL ?? effective.model;
-  const baseUrl =
+  let baseUrl =
     opts.baseUrl ?? process.env.AI_AUDITOR_BASE_URL ?? effective.baseUrl;
+
+  if (
+    effectiveProvider === "cloudflare" &&
+    !opts.baseUrl &&
+    !process.env.AI_AUDITOR_BASE_URL
+  ) {
+    const accountId = process.env.CF_ACCOUNT_ID;
+    const gatewaySlug = process.env.CF_GATEWAY_SLUG;
+    if (!accountId || !gatewaySlug) {
+      throw new Error(
+        "Cloudflare provider requires CF_ACCOUNT_ID and CF_GATEWAY_SLUG env vars (plus CF_API_TOKEN).",
+      );
+    }
+    baseUrl = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewaySlug}/openai/chat/completions`;
+  }
 
   const localEndpoint = LOCAL_ENDPOINT.test(baseUrl);
   const keyRequired = effective.keyRequired && !localEndpoint;

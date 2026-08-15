@@ -13,6 +13,19 @@ const EXCLUDES = [
   "**/ai-auditor-report/**",
 ];
 
+// Never touch during autofix, even if a rule flags them.
+const PROTECTED_IGNORES = [
+  "**/.git/**",
+  "**/.env",
+  "**/.env.*",
+  "**/package-lock.json",
+  "**/yarn.lock",
+  "**/pnpm-lock.yaml",
+  "**/npm-shrinkwrap.json",
+  "**/bun.lockb",
+  "**/*.lock",
+];
+
 const CONFIG_FILES = [
   ".eslintrc",
   ".eslintrc.js",
@@ -209,4 +222,87 @@ export async function runEslint(cwd: string): Promise<Issue[]> {
       },
     ];
   }
+}
+
+export interface AutofixOptions {
+  dryRun?: boolean;
+}
+
+// Mechanical pre-pass: run the same bundled ESLint with fix: true, write
+// fixes back to disk (unless dryRun), and return the autofixable issues.
+// Protected/ignored files are never modified. Two passes are needed because
+// after a fix is applied the file is re-linted and the fixed message
+// disappears, so the autofixable set must be captured before fixing.
+export async function runEslintAutofix(
+  cwd: string,
+  opts: AutofixOptions = {},
+): Promise<Issue[]> {
+  const absCwd = resolve(cwd);
+  const hasConfig = CONFIG_FILES.some((f) => existsSync(join(absCwd, f)));
+
+  const overrideConfig = {
+    ignorePatterns: [...EXCLUDES, ...PROTECTED_IGNORES],
+    ...(hasConfig
+      ? {}
+      : {
+          parserOptions: { ecmaVersion: "latest", sourceType: "module" },
+          env: { node: true, es2022: true, browser: true },
+          rules: DEFAULT_RULES,
+        }),
+  };
+  const baseOptions = {
+    cwd: absCwd,
+    useEslintrc: hasConfig,
+    resolvePluginsRelativeTo: __dirname,
+    errorOnUnmatchedPattern: false,
+    overrideConfig,
+  } as ConstructorParameters<typeof ESLint>[0];
+
+  // Pass 1 — capture which issues are autofixable (msg.fix present).
+  const lint = new ESLint(baseOptions);
+  const results = await lint.lintFiles(["."]);
+
+  const issues: Issue[] = [];
+  for (const file of results) {
+    const relPath = relativePosix(absCwd, file.filePath);
+    for (const msg of file.messages) {
+      if (!msg.fix) continue;
+      const ruleId = msg.ruleId ?? "unknown";
+      issues.push({
+        id: makeId("eslint", ruleId, relPath, msg.line ?? 0, msg.message),
+        tool: "eslint",
+        ruleId,
+        message: msg.message,
+        severity: mapSeverity(msg.severity),
+        category: mapCategory(ruleId),
+        location: {
+          filePath: relPath,
+          startLine: msg.line || undefined,
+          startColumn: msg.column || undefined,
+          endLine: msg.endLine || undefined,
+          endColumn: msg.endColumn || undefined,
+        },
+        evidence: { snippet: snippetFor(file.source, msg.line) },
+        fix: {
+          canAutoFix: true,
+          hint: "mechanical eslint autofix",
+          strategy: "mechanical",
+        },
+        meta: {
+          mechanicallyFixed: true,
+          eslintSeverity: msg.severity,
+          fixable: true,
+        },
+      });
+    }
+  }
+
+  // Pass 2 — actually apply fixes to disk (skipped in dry-run).
+  if (!opts.dryRun && issues.length > 0) {
+    const fixer = new ESLint({ ...baseOptions, fix: true });
+    const fixed = await fixer.lintFiles(["."]);
+    await ESLint.outputFixes(fixed);
+  }
+
+  return issues;
 }

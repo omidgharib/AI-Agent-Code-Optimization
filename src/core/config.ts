@@ -31,6 +31,7 @@ export function buildConfig(
     model: model.model,
     provider: model.provider,
     keyRequired: model.keyRequired,
+    mechanicalAutofix: opts.mechanicalAutofix ?? true,
     baseUrl: model.baseUrl,
     apiKey: model.apiKey,
     dryRun: opts.dryRun ?? false,

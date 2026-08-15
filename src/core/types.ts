@@ -82,6 +82,7 @@ export interface AuditConfig {
   model: string;
   provider: string;
   keyRequired: boolean;
+  mechanicalAutofix: boolean;
   baseUrl: string;
   apiKey: string;
   dryRun: boolean;

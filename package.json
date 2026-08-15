@@ -2,7 +2,7 @@
   "name": "ai-auditor",
   "version": "1.0.0",
   "bin": {
-    "ai-auditor": "./dist/cli/index.ts"
+    "ai-auditor": "./dist/cli/index.js"
   },
   "scripts": {
     "build": "tsc && node -e \"const fs=require('fs');const f='dist/cli/index.js';fs.writeFileSync(f,'#!/usr/bin/env node\\n'+fs.readFileSync(f,'utf8'));fs.chmodSync(f,0o755);\"",

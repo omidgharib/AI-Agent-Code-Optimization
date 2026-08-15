@@ -1,5 +1,5 @@
 // FILE: src/core/engine.ts
-import { runEslint } from "../analyzers/eslint";
+import { runEslint, runEslintAutofix } from "../analyzers/eslint";
 import { runTsc } from "../analyzers/tsc";
 import { runPlaywright } from "../analyzers/playwright";
 import { runLighthouse } from "../analyzers/lighthouse";
@@ -17,11 +17,22 @@ import type {
   PrioritizedIssue,
   FixResponse,
   Issue,
+  Severity,
 } from "./types";
 
 interface AnalyzeResult {
   issues: Issue[];
   lighthouse?: LighthouseReport;
+}
+
+const SEVERITY_ORDER = ["low", "medium", "high", "critical"];
+
+function filterBySeverity(issues: Issue[], severity?: Severity): Issue[] {
+  if (!severity) return issues;
+  const minIdx = SEVERITY_ORDER.indexOf(severity);
+  return issues.filter(
+    (i) => SEVERITY_ORDER.indexOf(i.severity) >= minIdx,
+  );
 }
 
 async function analyze(
@@ -65,14 +76,8 @@ export async function runAudit(
 
   try {
     const initialAnalysis = await analyze(repoRoot, config.url);
-    let issues = initialAnalysis.issues;
+    let issues = filterBySeverity(initialAnalysis.issues, config.severity);
     const lighthouse = initialAnalysis.lighthouse;
-
-    if (config.severity) {
-      const order = ["low", "medium", "high", "critical"];
-      const minIdx = order.indexOf(config.severity);
-      issues = issues.filter((i) => order.indexOf(i.severity) >= minIdx);
-    }
 
     let prioritized = prioritize(issues);
     logger.info(`Found ${prioritized.length} issues`);
@@ -85,9 +90,44 @@ export async function runAudit(
         return { exitCode: 2 };
       }
 
+      // Mechanical pre-pass: let bundled ESLint autofix deterministic issues
+      // first so the LLM never spends tokens on them.
+      const mechanicallyFixedIds = new Set<string>();
+      if (config.mechanicalAutofix) {
+        try {
+          const autofixed = await runEslintAutofix(repoRoot, {
+            dryRun: config.dryRun,
+          });
+          for (const a of autofixed) mechanicallyFixedIds.add(a.id);
+          if (autofixed.length > 0) {
+            logger.success(
+              config.dryRun
+                ? `Mechanical pre-pass would autofix ${autofixed.length} issues`
+                : `Mechanical pre-pass autofixed ${autofixed.length} issues`,
+            );
+          } else {
+            logger.info("Mechanical pre-pass: nothing to autofix");
+          }
+        } catch (e) {
+          logger.warn(`Mechanical pre-pass failed: ${String(e)}`);
+        }
+
+        // If fixes were written, re-analyze so counts and the LLM pool reflect
+        // the new file contents (autofixed issues are gone automatically).
+        if (!config.dryRun && mechanicallyFixedIds.size > 0) {
+          const fresh = (await analyze(repoRoot, config.url, false)).issues;
+          prioritized = prioritize(filterBySeverity(fresh, config.severity));
+          logger.info(
+            `Re-analyzed after mechanical pass: ${prioritized.length} issues`,
+          );
+        }
+      }
+
       for (let iter = 0; iter < config.maxFixIterations; iter++) {
         const planned = selectIssuesForFix(prioritized);
-        const selected = planned.flatMap((p) => p.issues);
+        const selected = planned
+          .flatMap((p) => p.issues)
+          .filter((i) => !mechanicallyFixedIds.has(i.id));
         if (selected.length === 0) break;
 
         logger.info(

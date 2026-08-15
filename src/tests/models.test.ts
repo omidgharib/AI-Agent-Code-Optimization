@@ -17,6 +17,10 @@ const ENV_KEYS = [
   "CEREBRAS_API_KEY",
   "DEEPSEEK_API_KEY",
   "ZHIPU_API_KEY",
+  "DASHSCOPE_API_KEY",
+  "CF_API_TOKEN",
+  "CF_ACCOUNT_ID",
+  "CF_GATEWAY_SLUG",
 ];
 
 const savedEnv: Record<string, string | undefined> = {};
@@ -54,6 +58,39 @@ describe("resolveModel", () => {
     expect(r.apiKey).toBe("sk-test");
   });
 
+  it("auto-selects a free provider when its key is set", () => {
+    process.env.ZHIPU_API_KEY = "zp-test";
+    const r = resolveModel({});
+    expect(r.provider).toBe("zhipu");
+    expect(r.model).toBe("glm-4.7-flash");
+    expect(r.apiKey).toBe("zp-test");
+  });
+
+  it("prefers dashscope key over zhipu when both are set", () => {
+    process.env.DASHSCOPE_API_KEY = "sk-ds";
+    process.env.ZHIPU_API_KEY = "zp-test";
+    const r = resolveModel({});
+    expect(r.provider).toBe("dashscope");
+  });
+
+  it("builds the cloudflare gateway URL from env vars", () => {
+    process.env.CF_API_TOKEN = "cf-token";
+    process.env.CF_ACCOUNT_ID = "acc-123";
+    process.env.CF_GATEWAY_SLUG = "gw-1";
+    const r = resolveModel({ provider: "cloudflare" });
+    expect(r.baseUrl).toBe(
+      "https://gateway.ai.cloudflare.com/v1/acc-123/gw-1/openai/chat/completions",
+    );
+    expect(r.apiKey).toBe("cf-token");
+  });
+
+  it("throws for cloudflare without account/gateway env", () => {
+    process.env.CF_API_TOKEN = "cf-token";
+    expect(() => resolveModel({ provider: "cloudflare" })).toThrow(
+      "CF_ACCOUNT_ID",
+    );
+  });
+
   it("uses provider preset and its own key env var", () => {
     process.env.GROQ_API_KEY = "gsk-test";
     const r = resolveModel({ provider: "groq" });
@@ -70,14 +107,25 @@ describe("resolveModel", () => {
     expect(r.apiKey).toBe("");
   });
 
-  it("zhipu free preset resolves to glm-4-flash", () => {
+  it("zhipu free preset resolves to a flash model", () => {
     process.env.ZHIPU_API_KEY = "zp-test";
     const r = resolveModel({ provider: "zhipu" });
-    expect(r.model).toBe("glm-4-flash");
+    expect(r.model).toBe("glm-4.7-flash");
     expect(r.baseUrl).toBe(
       "https://open.bigmodel.cn/api/paas/v4/chat/completions",
     );
     expect(r.apiKey).toBe("zp-test");
+    expect(r.keyRequired).toBe(true);
+  });
+
+  it("dashscope free preset resolves to qwen-flash", () => {
+    process.env.DASHSCOPE_API_KEY = "sk-ds";
+    const r = resolveModel({ provider: "dashscope" });
+    expect(r.model).toBe("qwen-flash");
+    expect(r.baseUrl).toBe(
+      "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    );
+    expect(r.apiKey).toBe("sk-ds");
     expect(r.keyRequired).toBe(true);
   });
 

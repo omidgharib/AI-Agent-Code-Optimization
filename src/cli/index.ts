@@ -19,6 +19,10 @@ program
   .option("--json", "Write JSON report")
   .option("--md", "Write Markdown report")
   .option("--fix", "Auto-fix issues using LLM")
+  .option(
+    "--no-mechanical",
+    "Skip the mechanical ESLint autofix pre-pass (run before the LLM)",
+  )
   .option("--max-fix-iterations <n>", "Max fix iterations", "2")
   .option("--include <pattern...>", "Include glob patterns")
   .option("--exclude <pattern...>", "Exclude glob patterns")
@@ -49,6 +53,7 @@ program
       json: opts.json ?? false,
       md: opts.md ?? false,
       fix: opts.fix ?? false,
+      mechanicalAutofix: opts.mechanical ?? true,
       maxFixIterations: parseInt(opts.maxFixIterations, 10),
       include: opts.include ?? [],
       exclude: opts.exclude,
