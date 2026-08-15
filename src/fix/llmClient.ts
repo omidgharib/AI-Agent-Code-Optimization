@@ -9,6 +9,46 @@ export interface LLMClientConfig {
   model: string;
 }
 
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 700;
+
+class TransientError extends Error {}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function attempt(
+  url: string,
+  init: RequestInit,
+): Promise<FixResponse> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (e) {
+    // Network-level failure (DNS, TLS reset, etc.) — worth retrying.
+    throw new TransientError(`LLM request failed: ${String(e)}`);
+  }
+
+  if (!res.ok) {
+    throw new Error(`LLM request failed: ${res.status} ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as {
+    choices: Array<{ message: { content: string } }>;
+  };
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    // Models that spend tokens on reasoning can return empty content.
+    throw new TransientError("Empty LLM response");
+  }
+
+  const parsed = FixResponseSchema.safeParse(JSON.parse(content));
+  if (!parsed.success)
+    throw new Error(`Invalid FixResponse: ${parsed.error.message}`);
+  return parsed.data as FixResponse;
+}
+
 export async function requestFix(
   config: LLMClientConfig,
   req: FixRequest,
@@ -31,24 +71,23 @@ export async function requestFix(
   };
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
 
-  const res = await fetch(url, {
+  const init: RequestInit = {
     method: "POST",
     headers,
     body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    throw new Error(`LLM request failed: ${res.status} ${res.statusText}`);
-  }
-
-  const data = (await res.json()) as {
-    choices: Array<{ message: { content: string } }>;
   };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Empty LLM response");
 
-  const parsed = FixResponseSchema.safeParse(JSON.parse(content));
-  if (!parsed.success)
-    throw new Error(`Invalid FixResponse: ${parsed.error.message}`);
-  return parsed.data as FixResponse;
+  let lastError: unknown;
+  for (let attemptNo = 1; attemptNo <= MAX_ATTEMPTS; attemptNo++) {
+    try {
+      return await attempt(url, init);
+    } catch (e) {
+      if (!(e instanceof TransientError)) throw e;
+      lastError = e;
+      if (attemptNo < MAX_ATTEMPTS) {
+        await delay(RETRY_DELAY_MS * attemptNo);
+      }
+    }
+  }
+  throw lastError;
 }

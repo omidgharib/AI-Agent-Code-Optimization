@@ -45,6 +45,9 @@ ai-auditor audit . --severity high
 # Dry run (preview patches only)
 ai-auditor audit . --fix --dry-run
 
+# Skip the mechanical ESLint autofix pre-pass
+ai-auditor audit . --fix --no-mechanical
+
 # Exclude patterns
 ai-auditor audit . --exclude node_modules dist .next
 
@@ -70,7 +73,8 @@ ai-auditor audit . --fix --model gpt-4o --base-url https://api.openai.com
 | `--json` | false | Write `ai-auditor-report/report.json` |
 | `--md` | false | Write `ai-auditor-report/report.md` |
 | `--url <url>` | - | Run Lighthouse (performance/SEO) audit against this URL |
-| `--fix` | false | Auto-fix issues via LLM |
+| `--fix` | false | Auto-fix issues via LLM (mechanical ESLint pre-pass runs first) |
+| `--no-mechanical` | false | Skip the mechanical ESLint autofix pre-pass (only with `--fix`) |
 | `--max-fix-iterations <n>` | 2 | Max fix loop iterations |
 | `--include <pattern...>` | - | Glob patterns to include |
 | `--exclude <pattern...>` | node_modules,dist,.next,coverage,ai-auditor-report | Patterns to exclude |
