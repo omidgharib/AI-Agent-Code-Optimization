@@ -44,6 +44,18 @@ export const MODEL_PROVIDERS: Record<string, ModelProvider> = {
     description:
       "Free local models via Ollama. No API key needed; requires Ollama running (`ollama serve`) with `ollama pull llama3.2`. Used as the default when no key is configured.",
   },
+  forgetmeai: {
+    id: "forgetmeai",
+    label: "ForgetMeAI DeepSeek Proxy (local)",
+    // عملی: deepseek-chat (حالت سریع/غیر-استدلالی) معمولا diff برنمی‌گرداند؛
+    // از deepseek-reasoner بگیر که واقعا FixResponse با patch می‌سازد.
+    model: "deepseek-reasoner",
+    baseUrl: "http://127.0.0.1:9655",
+    keyRequired: false,
+    free: true,
+    description:
+      "Local OpenAI-compatible DeepSeek proxy running through ForgetMeAI. Start the proxy first, then use its supported model IDs from GET /v1/models. The fast (non-reasoning) tier often refuses to produce fixes, so the default is deepseek-reasoner (override with --model). No API key is sent by ai-auditor.",
+  },
   openrouter: {
     id: "openrouter",
     label: "OpenRouter (free models)",
@@ -114,8 +126,7 @@ export const MODEL_PROVIDERS: Record<string, ModelProvider> = {
     id: "zhipu",
     label: "Zhipu GLM (free)",
     model: "glm-4.7-flash",
-    baseUrl:
-      "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
     keyRequired: true,
     keyEnv: "ZHIPU_API_KEY",
     free: true,
@@ -206,9 +217,10 @@ export function resolveModel(opts: {
   let effectiveProvider = preset?.id;
   if (!effectiveProvider) {
     if (hasExplicitModel || hasExplicitBase) effectiveProvider = "custom";
-    else effectiveProvider =
-      pickFreeProviderFromEnv() ??
-      (process.env.OPENAI_API_KEY ? DEFAULT_PROVIDER : FREE_DEFAULT_PROVIDER);
+    else
+      effectiveProvider =
+        pickFreeProviderFromEnv() ??
+        (process.env.OPENAI_API_KEY ? DEFAULT_PROVIDER : FREE_DEFAULT_PROVIDER);
   }
 
   const effective =
@@ -222,8 +234,7 @@ export function resolveModel(opts: {
     process.env.OPENAI_API_KEY ??
     "";
 
-  const model =
-    opts.model ?? process.env.AI_AUDITOR_MODEL ?? effective.model;
+  const model = opts.model ?? process.env.AI_AUDITOR_MODEL ?? effective.model;
   let baseUrl =
     opts.baseUrl ?? process.env.AI_AUDITOR_BASE_URL ?? effective.baseUrl;
 
@@ -256,7 +267,9 @@ export function resolveModel(opts: {
 
 export function listModels(): string {
   const rows = Object.values(MODEL_PROVIDERS).map((p) => {
-    const key = p.keyRequired ? `key: ${p.keyEnv ?? "OPENAI_API_KEY"}` : "no key";
+    const key = p.keyRequired
+      ? `key: ${p.keyEnv ?? "OPENAI_API_KEY"}`
+      : "no key";
     const cost = p.free ? "free" : "paid";
     return `${p.id.padEnd(12)} ${cost.padEnd(5)} ${key.padEnd(22)} ${p.label} — ${p.description}`;
   });

@@ -2,7 +2,7 @@
 import { Command } from "commander";
 import { buildConfig } from "../core/config";
 import { runAudit } from "../core/engine";
-import { setVerbose } from "../core/logger";
+import { setDebug, setVerbose } from "../core/logger";
 import { listModels } from "../core/models";
 import type { Severity } from "../core/types";
 
@@ -35,12 +35,20 @@ program
   .option("--dry-run", "Preview fixes without applying")
   .option("--verbose", "Verbose output")
   .option(
+    "--debug",
+    "Debug output: full error cause chains, request URLs, retry details",
+  )
+  .option(
     "--url <url>",
     "URL to audit with Lighthouse (e.g. http://localhost:3000)",
   )
   .option("--html", "Write HTML report")
   .action(async (auditPath: string | undefined, opts) => {
     if (opts.verbose) setVerbose(true);
+    if (opts.debug) {
+      setVerbose(true);
+      setDebug(true);
+    }
 
     if (opts.listModels) {
       console.log(listModels());

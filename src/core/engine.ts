@@ -7,7 +7,7 @@ import { normalize } from "../normalize/normalizer";
 import { prioritize } from "../prioritize/prioritize";
 import { buildContext } from "../fix/contextBuilder";
 import { selectIssuesForFix } from "../fix/fixPlanner";
-import { requestFix } from "../fix/llmClient";
+import { requestFix, diagnoseEndpoint, MAX_ATTEMPTS } from "../fix/llmClient";
 import { applyDiff } from "../fix/diffApplier";
 import { writeReport } from "../report/report";
 import { logger } from "./logger";
@@ -90,6 +90,33 @@ export async function runAudit(
         return { exitCode: 2 };
       }
 
+      logger.debug(
+        `Fix endpoint: ${config.provider} → model "${config.model}" @ ${config.baseUrl}${config.apiKey ? " (with API key)" : " (no API key)"}; up to ${MAX_ATTEMPTS} attempts per request`,
+      );
+
+      const preflight = await diagnoseEndpoint(
+        config.baseUrl,
+        config.model,
+        config.provider,
+      );
+      if (preflight.status === "fatal") {
+        logger.error(preflight.message);
+        logger.error(
+          "Fix aborted because the LLM endpoint is not listening. Start the proxy/daemon (or fix --base-url / --provider) and re-run.",
+        );
+        return { exitCode: 2 };
+      }
+      if (preflight.status === "warn") {
+        logger.warn(preflight.message);
+        if (/localhost|127\.0\.0\.1/.test(config.baseUrl)) {
+          logger.warn(
+            "Local proxy tip: authorize the account/login inside the proxy itself (e.g. 'Authorize DeepSeek login' in ForgetMeAI), and check the upstream is reachable from this network: `Test-NetConnection api.deepseek.com -Port 443`.",
+          );
+        }
+      } else {
+        logger.debug("Endpoint preflight OK");
+      }
+
       // Mechanical pre-pass: let bundled ESLint autofix deterministic issues
       // first so the LLM never spends tokens on them.
       const mechanicallyFixedIds = new Set<string>();
@@ -128,7 +155,14 @@ export async function runAudit(
         const selected = planned
           .flatMap((p) => p.issues)
           .filter((i) => !mechanicallyFixedIds.has(i.id));
-        if (selected.length === 0) break;
+        if (selected.length === 0) {
+          if (planned.length === 0) {
+            logger.info(
+              "No LLM-fixable issues left (the LLM only handles style / maintainability / autofixable issues; bug, security and performance issues are excluded by design).",
+            );
+          }
+          break;
+        }
 
         logger.info(
           `Fix iteration ${iter + 1}: ${selected.length} issues selected`,
@@ -156,8 +190,16 @@ export async function runAudit(
             },
           );
         } catch (e) {
-          logger.error(`LLM request failed: ${String(e)}`);
-          if (config.provider === "ollama") {
+          logger.error(
+            `LLM request failed (provider "${config.provider}", model "${config.model}" @ ${config.baseUrl}): ${String(e)}`,
+          );
+          if (
+            /localhost|127\.0\.0\.1/.test(config.baseUrl)
+          ) {
+            logger.warn(
+              `Local endpoint at ${config.baseUrl} did not service the request — make sure the proxy/daemon is fully started and the port matches (try: Invoke-WebRequest http://127.0.0.1:<port>/v1/models).`,
+            );
+          } else if (config.provider === "ollama") {
             logger.warn(
               "Ollama provider: make sure Ollama is running (`ollama serve`) and the model is pulled (`ollama pull llama3.2`), or pick another provider with --provider / --list-models.",
             );
@@ -229,6 +271,10 @@ export async function runAudit(
     return { exitCode: prioritized.length > 0 ? 1 : 0 };
   } catch (e) {
     logger.error(`Internal error: ${String(e)}`);
+    if (e instanceof Error && e.stack)
+      logger.trace(`Stack: ${e.stack}`);
+    if (e instanceof Error && e.cause)
+      logger.trace(`Caused by: ${String(e.cause)}`);
     return { exitCode: 2 };
   }
 }

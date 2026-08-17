@@ -61,5 +61,5 @@ export const FixResponseSchema = z.object({
       touches: z.array(z.string()),
     }),
   ),
-  notes: z.array(z.string()),
+  notes: z.array(z.string()).default([]),
 });
