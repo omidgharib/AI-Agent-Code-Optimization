@@ -24,6 +24,11 @@ program
     "Skip the mechanical ESLint autofix pre-pass (run before the LLM)",
   )
   .option("--max-fix-iterations <n>", "Max fix iterations", "2")
+  .option(
+    "--patch-retries <n>",
+    "How many times to ask the LLM to repair a diff that failed to apply (default 1)",
+    "1",
+  )
   .option("--include <pattern...>", "Include glob patterns")
   .option("--exclude <pattern...>", "Exclude glob patterns")
   .option("--severity <level>", "Minimum severity (low|medium|high|critical)")
@@ -63,6 +68,7 @@ program
       fix: opts.fix ?? false,
       mechanicalAutofix: opts.mechanical ?? true,
       maxFixIterations: parseInt(opts.maxFixIterations, 10),
+      patchRetries: parseInt(opts.patchRetries, 10),
       include: opts.include ?? [],
       exclude: opts.exclude,
       severity: opts.severity as Severity | undefined,

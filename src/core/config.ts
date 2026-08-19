@@ -37,5 +37,6 @@ export function buildConfig(
     dryRun: opts.dryRun ?? false,
     verbose: opts.verbose ?? false,
     html: opts.html ?? false,
+    patchRetries: opts.patchRetries ?? 1,
   };
 }

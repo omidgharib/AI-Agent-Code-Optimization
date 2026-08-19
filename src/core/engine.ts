@@ -1,4 +1,6 @@
 // FILE: src/core/engine.ts
+import fs from "node:fs/promises";
+import { resolve } from "node:path";
 import { runEslint, runEslintAutofix } from "../analyzers/eslint";
 import { runTsc } from "../analyzers/tsc";
 import { runPlaywright } from "../analyzers/playwright";
@@ -7,8 +9,13 @@ import { normalize } from "../normalize/normalizer";
 import { prioritize } from "../prioritize/prioritize";
 import { buildContext } from "../fix/contextBuilder";
 import { selectIssuesForFix } from "../fix/fixPlanner";
-import { requestFix, diagnoseEndpoint, MAX_ATTEMPTS } from "../fix/llmClient";
-import { applyDiff } from "../fix/diffApplier";
+import {
+  requestFix,
+  repairPatch,
+  diagnoseEndpoint,
+  MAX_ATTEMPTS,
+} from "../fix/llmClient";
+import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
 import { writeReport } from "../report/report";
 import { logger } from "./logger";
 import type { LighthouseReport } from "../report/summary";
@@ -222,11 +229,69 @@ export async function runAudit(
 
         let anyApplied = false;
         for (const patch of fixResponse.patches) {
-          const result = await applyDiff(
+          let result = await applyDiff(
             patch.unifiedDiff,
             repoRoot,
             config.dryRun,
           );
+
+          // Apply-feedback repair: LLM diffs often carry slightly stale context
+          // (a dropped comma, different spacing). Send the exact apply error and
+          // the CURRENT file content back and ask for a corrected single diff.
+          for (
+            let attempt = 1;
+            !result.success && attempt <= config.patchRetries;
+            attempt++
+          ) {
+            logger.warn(
+              `Patch "${patch.description}" failed to apply (${result.error}); asking the LLM to repair it (${attempt}/${config.patchRetries})`,
+            );
+            const contents: Record<string, string> = {};
+            const target = getDiffTargetPath(patch.unifiedDiff);
+            if (target) {
+              try {
+                contents[target] = await fs.readFile(
+                  resolve(repoRoot, target),
+                  "utf8",
+                );
+              } catch {
+                /* file may be new/absent */
+              }
+            }
+            try {
+              const rep = await repairPatch(
+                {
+                  baseUrl: config.baseUrl,
+                  apiKey: config.apiKey,
+                  model: config.model,
+                },
+                {
+                  repoRoot,
+                  issues: selected,
+                  context,
+                  constraints: {
+                    maxFilesChanged: 5,
+                    preferMinimalDiff: true,
+                    doNotChangePublicAPI: false,
+                    keepFormatting: true,
+                  },
+                },
+                patch,
+                result.error ?? "unknown apply error",
+                contents,
+              );
+              if (rep.patches.length === 0) break;
+              result = await applyDiff(
+                rep.patches[0].unifiedDiff,
+                repoRoot,
+                config.dryRun,
+              );
+            } catch (e) {
+              logger.warn(`Patch repair failed: ${String(e)}`);
+              break;
+            }
+          }
+
           if (result.success) {
             allPatches.push(patch);
             anyApplied = true;

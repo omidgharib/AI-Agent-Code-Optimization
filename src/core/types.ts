@@ -88,4 +88,5 @@ export interface AuditConfig {
   dryRun: boolean;
   verbose: boolean;
   html?: boolean;
+  patchRetries: number;
 }

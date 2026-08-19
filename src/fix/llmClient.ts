@@ -74,8 +74,8 @@ function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
-// Normalize anything near FixResponse (bare patch object / patches array)
-// into the wrapper shape before schema validation.
+// Normalize anything near FixResponse (bare patch object / patches array /
+// {fixes:[{filePath,diff}]} style) into the wrapper shape before schema validation.
 function coerceFixResponse(raw: unknown): unknown {
   if (Array.isArray(raw)) {
     const patches = raw
@@ -83,21 +83,59 @@ function coerceFixResponse(raw: unknown): unknown {
         (p): p is Record<string, unknown> =>
           p !== null && typeof p === "object",
       )
-      .filter((p) => typeof p.unifiedDiff === "string")
-      .map((p) => ({
-        description:
-          asString(p.description) ??
-          (p.unifiedDiff as string).split("\n")[0].slice(0, 80),
-        unifiedDiff: p.unifiedDiff,
-        touches: Array.isArray(p.touches)
-          ? p.touches.filter((t): t is string => typeof t === "string")
-          : [],
-      }));
+      .filter((p) => typeof p.unifiedDiff === "string" || typeof p.diff === "string")
+      .map((p) => {
+        const diff = asString(p.unifiedDiff) ?? asString(p.diff);
+        return {
+          description:
+            asString(p.description) ??
+            asString(p.message) ??
+            (diff as string).split("\n")[0].slice(0, 80),
+          unifiedDiff: diff,
+          touches: Array.isArray(p.touches)
+            ? p.touches.filter((t): t is string => typeof t === "string")
+            : asString(p.filePath)
+              ? [asString(p.filePath) as string]
+              : [],
+        };
+      });
     return { patches, notes: [] };
   }
 
   if (raw && typeof raw === "object") {
     const o = raw as Record<string, unknown>;
+    const topLevelMessage = asString(o.message);
+    if (Array.isArray(o.fixes)) {
+      const patches = o.fixes
+        .filter(
+          (f): f is Record<string, unknown> =>
+            f !== null && typeof f === "object",
+        )
+        .filter(
+          (f) => typeof f.diff === "string" || typeof f.unifiedDiff === "string",
+        )
+        .map((f) => {
+          const diff = asString(f.unifiedDiff) ?? asString(f.diff);
+          return {
+            description:
+              asString(f.description) ??
+              `Fix in ${asString(f.filePath) ?? "?"}`,
+            unifiedDiff: diff,
+            touches: asString(f.filePath) ? [asString(f.filePath) as string] : [],
+          };
+        });
+      if (patches.length > 0) {
+        return {
+          patches,
+          notes: Array.isArray(o.notes)
+            ? o.notes
+            : topLevelMessage
+              ? [topLevelMessage]
+              : [],
+        };
+      }
+    }
+
     if (!Array.isArray(o.patches)) {
       if (typeof o.unifiedDiff === "string") {
         return {
@@ -110,7 +148,11 @@ function coerceFixResponse(raw: unknown): unknown {
                 : [],
             },
           ],
-          notes: Array.isArray(o.notes) ? o.notes : [],
+          notes: Array.isArray(o.notes)
+            ? o.notes
+            : topLevelMessage
+              ? [topLevelMessage]
+              : [],
         };
       }
     }
@@ -293,61 +335,97 @@ async function attempt(
   return parsed.data as FixResponse;
 }
 
-export async function requestFix(
-  config: LLMClientConfig,
-  req: FixRequest,
+// Shared retry loop: connection-level errors and 5xx/429 are retried with
+// backoff; timeouts (endpoint alive but unresponsive) and 4xx are fatal.
+async function withRetries(
+  label: string,
+  run: () => Promise<FixResponse>,
 ): Promise<FixResponse> {
-  const url = buildChatUrl(config.baseUrl);
-  const body = {
-    model: config.model,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are an expert code-fixing agent. Return ONLY valid JSON matching FixResponse. Do not include markdown. Provide unified diffs only. When fixing an undefined reference (e.g. missing function, variable, import), you are expected to ADD the missing declaration in the affected file. If the provided file excerpt is truncated or shows only issue lines, rely on the issue message and line numbers to construct an accurate unified diff.",
-      },
-      { role: "user", content: JSON.stringify(req) },
-    ],
-  };
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
-
-  const init: RequestInit = {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  };
-
   let lastError: unknown;
   for (let attemptNo = 1; attemptNo <= MAX_ATTEMPTS; attemptNo++) {
-    const label = requestLabel(init.method ?? "POST", url);
     logger.debug(
       `LLM attempt ${attemptNo}/${MAX_ATTEMPTS}: requesting fix from ${label} (timeout ${requestTimeoutMs()}ms)`,
     );
-    const retry = (e: unknown, ms: number) => {
-      logger.debug(
-        `LLM attempt ${attemptNo}/${MAX_ATTEMPTS} for ${label} failed: ${String(e)} — retrying in ${ms}ms`,
-      );
-    };
     try {
-      return await attempt(url, init);
+      return await run();
     } catch (e) {
       const transient =
-        e instanceof TransientError &&
-        !(e as TransientError).noRetry;
+        e instanceof TransientError && !(e as TransientError).noRetry;
       const retryableHttp =
         e instanceof Error && (e as { retryable?: boolean }).retryable;
       if (!transient && !retryableHttp) throw e;
       lastError = e;
       if (attemptNo < MAX_ATTEMPTS) {
         const ms = RETRY_DELAY_MS * attemptNo;
-        retry(e, ms);
+        logger.debug(
+          `LLM attempt ${attemptNo}/${MAX_ATTEMPTS} for ${label} failed: ${String(e)} — retrying in ${ms}ms`,
+        );
         await delay(ms);
       }
     }
   }
   throw lastError;
+}
+
+function chatInit(
+  config: LLMClientConfig,
+  messages: Array<{ role: string; content: string }>,
+): RequestInit {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+  return {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ model: config.model, messages }),
+  };
+}
+
+export async function requestFix(
+  config: LLMClientConfig,
+  req: FixRequest,
+): Promise<FixResponse> {
+  const url = buildChatUrl(config.baseUrl);
+  const init = chatInit(config, [
+    {
+      role: "system",
+      content:
+        "You are an expert code-fixing agent. Return ONLY valid JSON matching FixResponse. Do not include markdown. Provide unified diffs only. When fixing an undefined reference (e.g. missing function, variable, import), you are expected to ADD the missing declaration in the affected file. If the provided file excerpt is truncated or shows only issue lines, rely on the issue message and line numbers to construct an accurate unified diff.",
+    },
+    { role: "user", content: JSON.stringify(req) },
+  ]);
+  return withRetries(requestLabel("POST", url), () => attempt(url, init));
+}
+
+/**
+ * Re-request a single corrected patch after a unified diff failed to apply.
+ * The exact apply error and the current file contents are sent back so the
+ * model can regenerate context lines that match the file byte-for-byte.
+ */
+export async function repairPatch(
+  config: LLMClientConfig,
+  req: FixRequest,
+  failedPatch: { description: string; unifiedDiff: string; touches: string[] },
+  error: string,
+  fileContents: Record<string, string>,
+): Promise<FixResponse> {
+  const url = buildChatUrl(config.baseUrl);
+  const init = chatInit(config, [
+    {
+      role: "system",
+      content:
+        "You generate unified diffs for a lint-fixing tool. A diff you produced earlier did not apply cleanly. Return ONLY valid JSON matching FixResponse (exactly one patch). The diff MUST apply cleanly and exactly against the CURRENT file contents provided below — copy context lines character-for-character, keep the correct file paths in the --- / +++ headers (strip any a/ b/ prefixes on the +++ side), and include enough exact context.",
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        originalRequest: req,
+        failedPatch,
+        applyError: error,
+        currentFileContents: fileContents,
+      }),
+    },
+  ]);
+  return withRetries(requestLabel("POST", url), () => attempt(url, init));
 }
