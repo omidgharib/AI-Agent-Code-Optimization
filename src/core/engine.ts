@@ -1,5 +1,6 @@
 // FILE: src/core/engine.ts
 import fs from "node:fs/promises";
+import path from "node:path";
 import { resolve } from "node:path";
 import { runEslint, runEslintAutofix } from "../analyzers/eslint";
 import { runTsc } from "../analyzers/tsc";
@@ -18,6 +19,8 @@ import {
 import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
 import { writeReport } from "../report/report";
 import { logger } from "./logger";
+import { createFixTrace } from "./fixTrace";
+import type { FixTracer } from "./fixTrace";
 import type { LighthouseReport } from "../report/summary";
 import type {
   AuditConfig,
@@ -78,8 +81,11 @@ export async function runAudit(
 ): Promise<{ exitCode: number }> {
   const repoRoot = config.path;
   const outDir = `${repoRoot}/ai-auditor-report`;
+  const reportTs = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const reportDir = path.join(outDir, reportTs);
   const allPatches: FixResponse["patches"] = [];
   const verificationErrors: string[] = [];
+  let trace: FixTracer | undefined;
 
   try {
     const initialAnalysis = await analyze(repoRoot, config.url);
@@ -157,6 +163,9 @@ export async function runAudit(
         }
       }
 
+      trace = await createFixTrace(reportDir, config.model, config.provider, config.baseUrl);
+      logger.debug(`Trace log: ${path.join(reportDir, "trace.json")}`);
+
       for (let iter = 0; iter < config.maxFixIterations; iter++) {
         const planned = selectIssuesForFix(prioritized);
         const selected = planned
@@ -175,6 +184,8 @@ export async function runAudit(
           `Fix iteration ${iter + 1}: ${selected.length} issues selected`,
         );
         const context = await buildContext(selected);
+
+        trace.logIterationStart(iter, selected, context);
 
         let fixResponse: FixResponse;
         try {
@@ -195,6 +206,7 @@ export async function runAudit(
                 keepFormatting: true,
               },
             },
+            trace,
           );
         } catch (e) {
           logger.error(
@@ -279,6 +291,7 @@ export async function runAudit(
                 patch,
                 result.error ?? "unknown apply error",
                 contents,
+                trace,
               );
               if (rep.patches.length === 0) break;
               result = await applyDiff(
@@ -286,8 +299,21 @@ export async function runAudit(
                 repoRoot,
                 config.dryRun,
               );
+              trace.logPatchRepair(
+                patch.description,
+                result.error ?? "",
+                rep.patches[0]?.unifiedDiff,
+                result.success,
+              );
             } catch (e) {
               logger.warn(`Patch repair failed: ${String(e)}`);
+              trace.logPatchRepair(
+                patch.description,
+                result.error ?? "unknown",
+                undefined,
+                false,
+                String(e),
+              );
               break;
             }
           }
@@ -296,8 +322,21 @@ export async function runAudit(
             allPatches.push(patch);
             anyApplied = true;
             logger.success(`Applied: ${patch.description}`);
+            trace.logPatchApply(
+              patch.description,
+              patch.touches[0] ?? getDiffTargetPath(patch.unifiedDiff) ?? "?",
+              patch.unifiedDiff,
+              true,
+            );
           } else {
             logger.warn(`Patch failed: ${result.error}`);
+            trace.logPatchApply(
+              patch.description,
+              patch.touches[0] ?? getDiffTargetPath(patch.unifiedDiff) ?? "?",
+              patch.unifiedDiff,
+              false,
+              result.error,
+            );
           }
         }
 
@@ -318,6 +357,7 @@ export async function runAudit(
     }
 
     const verificationPassed = verificationErrors.length === 0;
+    if (trace) await trace.flush();
     await writeReport(
       prioritized,
       allPatches,
@@ -327,11 +367,12 @@ export async function runAudit(
         md: config.md,
         html: config.html ?? false,
         outDir,
+        reportDir,
       },
       lighthouse,
     );
 
-    if (config.json || config.md) logger.info(`Report written to ${outDir}`);
+    if (config.json || config.md) logger.info(`Report written to ${reportDir}`);
 
     return { exitCode: prioritized.length > 0 ? 1 : 0 };
   } catch (e) {

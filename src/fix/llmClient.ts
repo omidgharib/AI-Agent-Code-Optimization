@@ -1,6 +1,7 @@
 // FILE: src/fix/llmClient.ts
 import * as nodeNet from "node:net";
 import type { FixRequest, FixResponse } from "../core/types";
+import type { FixTracer } from "../core/fixTrace";
 import { FixResponseSchema } from "../core/schemas";
 import { buildChatUrl } from "../core/models";
 import {
@@ -124,16 +125,45 @@ function coerceFixResponse(raw: unknown): unknown {
             touches: asString(f.filePath) ? [asString(f.filePath) as string] : [],
           };
         });
-      if (patches.length > 0) {
-        return {
-          patches,
-          notes: Array.isArray(o.notes)
-            ? o.notes
-            : topLevelMessage
-              ? [topLevelMessage]
-              : [],
-        };
-      }
+      return {
+        patches,
+        notes: Array.isArray(o.notes)
+          ? o.notes
+          : topLevelMessage
+            ? [topLevelMessage]
+            : [],
+      };
+    }
+
+    // DeepSeek often returns { changes: [{ filePath, unifiedDiff }] }
+    if (Array.isArray(o.changes)) {
+      const patches = o.changes
+        .filter(
+          (c): c is Record<string, unknown> =>
+            c !== null && typeof c === "object",
+        )
+        .filter(
+          (c) => typeof c.diff === "string" || typeof c.unifiedDiff === "string",
+        )
+        .map((c) => {
+          const diff = asString(c.unifiedDiff) ?? asString(c.diff);
+          return {
+            description:
+              asString(c.description) ??
+              asString(c.message) ??
+              `Fix in ${asString(c.filePath) ?? "?"}`,
+            unifiedDiff: diff,
+            touches: asString(c.filePath) ? [asString(c.filePath) as string] : [],
+          };
+        });
+      return {
+        patches,
+        notes: Array.isArray(o.notes)
+          ? o.notes
+          : topLevelMessage
+            ? [topLevelMessage]
+            : [],
+      };
     }
 
     if (!Array.isArray(o.patches)) {
@@ -260,7 +290,7 @@ export async function diagnoseEndpoint(
 async function attempt(
   url: string,
   init: RequestInit,
-): Promise<FixResponse> {
+): Promise<{ rawContent: string; data: FixResponse }> {
   const label = requestLabel(init.method ?? "POST", url);
   let res: Response;
   try {
@@ -323,24 +353,26 @@ async function attempt(
     const first = parsed.error.issues[0];
     const preview =
       content.length > 200 ? `${content.slice(0, 200)}…` : content;
-    throw new Error(
+    const err = new Error(
       `invalid FixResponse from ${label}: ${first?.message ?? parsed.error.message} (model output preview: ${preview})`,
     );
+    Object.assign(err, { rawContent: content });
+    throw err;
   }
   if (parsed.data.patches.length === 0) {
     logger.debug(
       `LLM returned no patches — notes: ${JSON.stringify(parsed.data.notes).slice(0, 500)}`,
     );
   }
-  return parsed.data as FixResponse;
+  return { rawContent: content, data: parsed.data as FixResponse };
 }
 
 // Shared retry loop: connection-level errors and 5xx/429 are retried with
 // backoff; timeouts (endpoint alive but unresponsive) and 4xx are fatal.
 async function withRetries(
   label: string,
-  run: () => Promise<FixResponse>,
-): Promise<FixResponse> {
+  run: () => Promise<{ rawContent: string; data: FixResponse }>,
+): Promise<{ rawContent: string; data: FixResponse }> {
   let lastError: unknown;
   for (let attemptNo = 1; attemptNo <= MAX_ATTEMPTS; attemptNo++) {
     logger.debug(
@@ -385,17 +417,29 @@ function chatInit(
 export async function requestFix(
   config: LLMClientConfig,
   req: FixRequest,
+  trace?: FixTracer,
 ): Promise<FixResponse> {
   const url = buildChatUrl(config.baseUrl);
-  const init = chatInit(config, [
+  const messages = [
     {
       role: "system",
       content:
         "You are an expert code-fixing agent. Return ONLY valid JSON matching FixResponse. Do not include markdown. Provide unified diffs only. When fixing an undefined reference (e.g. missing function, variable, import), you are expected to ADD the missing declaration in the affected file. If the provided file excerpt is truncated or shows only issue lines, rely on the issue message and line numbers to construct an accurate unified diff.",
     },
     { role: "user", content: JSON.stringify(req) },
-  ]);
-  return withRetries(requestLabel("POST", url), () => attempt(url, init));
+  ];
+  const init = chatInit(config, messages);
+  if (trace) trace.logAiRequest("request", req);
+  const t0 = Date.now();
+  try {
+    const result = await withRetries(requestLabel("POST", url), () => attempt(url, init));
+    if (trace) trace.logAiResponse("request", result.rawContent, result.data, Date.now() - t0);
+    return result.data;
+  } catch (e) {
+    const rawContent = (e as { rawContent?: string }).rawContent;
+    if (trace) trace.logAiError("request", String(e), Date.now() - t0, rawContent);
+    throw e;
+  }
 }
 
 /**
@@ -409,9 +453,10 @@ export async function repairPatch(
   failedPatch: { description: string; unifiedDiff: string; touches: string[] },
   error: string,
   fileContents: Record<string, string>,
+  trace?: FixTracer,
 ): Promise<FixResponse> {
   const url = buildChatUrl(config.baseUrl);
-  const init = chatInit(config, [
+  const messages = [
     {
       role: "system",
       content:
@@ -426,6 +471,17 @@ export async function repairPatch(
         currentFileContents: fileContents,
       }),
     },
-  ]);
-  return withRetries(requestLabel("POST", url), () => attempt(url, init));
+  ];
+  const init = chatInit(config, messages);
+  if (trace) trace.logAiRequest("repair", req);
+  const t0 = Date.now();
+  try {
+    const result = await withRetries(requestLabel("POST", url), () => attempt(url, init));
+    if (trace) trace.logAiResponse("repair", result.rawContent, result.data, Date.now() - t0);
+    return result.data;
+  } catch (e) {
+    const rawContent = (e as { rawContent?: string }).rawContent;
+    if (trace) trace.logAiError("repair", String(e), Date.now() - t0, rawContent);
+    throw e;
+  }
 }

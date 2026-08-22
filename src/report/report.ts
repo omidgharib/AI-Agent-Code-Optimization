@@ -66,11 +66,10 @@ export async function writeReport(
   issues: PrioritizedIssue[],
   patches: FixResponse["patches"],
   verification: { passed: boolean; errors: string[] },
-  config: { json: boolean; md: boolean; html: boolean; outDir: string },
+  config: { json: boolean; md: boolean; html: boolean; outDir: string; reportDir?: string },
   lighthouse?: LighthouseReport,
 ): Promise<void> {
-  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const outDir = path.join(config.outDir, ts);
+  const outDir = config.reportDir ?? path.join(config.outDir, new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19));
   await fs.mkdir(outDir, { recursive: true });
 
   if (lighthouse) await extractFullPageScreenshot(lighthouse, outDir);
