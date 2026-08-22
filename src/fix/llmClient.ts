@@ -84,9 +84,9 @@ function coerceFixResponse(raw: unknown): unknown {
         (p): p is Record<string, unknown> =>
           p !== null && typeof p === "object",
       )
-      .filter((p) => typeof p.unifiedDiff === "string" || typeof p.diff === "string")
+      .filter((p) => typeof p.unifiedDiff === "string" || typeof p.diff === "string" || typeof p.patch === "string")
       .map((p) => {
-        const diff = asString(p.unifiedDiff) ?? asString(p.diff);
+        const diff = asString(p.unifiedDiff) ?? asString(p.diff) ?? asString(p.patch);
         return {
           description:
             asString(p.description) ??
@@ -113,10 +113,10 @@ function coerceFixResponse(raw: unknown): unknown {
             f !== null && typeof f === "object",
         )
         .filter(
-          (f) => typeof f.diff === "string" || typeof f.unifiedDiff === "string",
+          (f) => typeof f.diff === "string" || typeof f.unifiedDiff === "string" || typeof f.patch === "string",
         )
         .map((f) => {
-          const diff = asString(f.unifiedDiff) ?? asString(f.diff);
+          const diff = asString(f.unifiedDiff) ?? asString(f.diff) ?? asString(f.patch);
           return {
             description:
               asString(f.description) ??
@@ -143,10 +143,10 @@ function coerceFixResponse(raw: unknown): unknown {
             c !== null && typeof c === "object",
         )
         .filter(
-          (c) => typeof c.diff === "string" || typeof c.unifiedDiff === "string",
+          (c) => typeof c.diff === "string" || typeof c.unifiedDiff === "string" || typeof c.patch === "string",
         )
         .map((c) => {
-          const diff = asString(c.unifiedDiff) ?? asString(c.diff);
+          const diff = asString(c.unifiedDiff) ?? asString(c.diff) ?? asString(c.patch);
           return {
             description:
               asString(c.description) ??
