@@ -40,9 +40,7 @@ const SEVERITY_ORDER = ["low", "medium", "high", "critical"];
 function filterBySeverity(issues: Issue[], severity?: Severity): Issue[] {
   if (!severity) return issues;
   const minIdx = SEVERITY_ORDER.indexOf(severity);
-  return issues.filter(
-    (i) => SEVERITY_ORDER.indexOf(i.severity) >= minIdx,
-  );
+  return issues.filter((i) => SEVERITY_ORDER.indexOf(i.severity) >= minIdx);
 }
 
 async function analyze(
@@ -163,7 +161,12 @@ export async function runAudit(
         }
       }
 
-      trace = await createFixTrace(reportDir, config.model, config.provider, config.baseUrl);
+      trace = await createFixTrace(
+        reportDir,
+        config.model,
+        config.provider,
+        config.baseUrl,
+      );
       logger.debug(`Trace log: ${path.join(reportDir, "trace.json")}`);
 
       for (let iter = 0; iter < config.maxFixIterations; iter++) {
@@ -174,7 +177,7 @@ export async function runAudit(
         if (selected.length === 0) {
           if (planned.length === 0) {
             logger.info(
-              "No LLM-fixable issues left (the LLM only handles style / maintainability / autofixable issues; bug, security and performance issues are excluded by design).",
+              "No LLM-fixable issues left (the LLM only handles style / maintainability / security / performance / autofixable issues).",
             );
           }
           break;
@@ -212,9 +215,7 @@ export async function runAudit(
           logger.error(
             `LLM request failed (provider "${config.provider}", model "${config.model}" @ ${config.baseUrl}): ${String(e)}`,
           );
-          if (
-            /localhost|127\.0\.0\.1/.test(config.baseUrl)
-          ) {
+          if (/localhost|127\.0\.0\.1/.test(config.baseUrl)) {
             logger.warn(
               `Local endpoint at ${config.baseUrl} did not service the request — make sure the proxy/daemon is fully started and the port matches (try: Invoke-WebRequest http://127.0.0.1:<port>/v1/models).`,
             );
@@ -241,6 +242,12 @@ export async function runAudit(
 
         let anyApplied = false;
         for (const patch of fixResponse.patches) {
+          if (!patch.unifiedDiff || !patch.unifiedDiff.trim()) {
+            logger.warn(
+              `Patch "${patch.description}" is empty (no diff) — skipping`,
+            );
+            continue;
+          }
           let result = await applyDiff(
             patch.unifiedDiff,
             repoRoot,
@@ -322,9 +329,11 @@ export async function runAudit(
             allPatches.push(patch);
             anyApplied = true;
             logger.success(`Applied: ${patch.description}`);
+            const targetFile =
+              patch.touches[0] ?? getDiffTargetPath(patch.unifiedDiff) ?? "?";
             trace.logPatchApply(
               patch.description,
-              patch.touches[0] ?? getDiffTargetPath(patch.unifiedDiff) ?? "?",
+              targetFile,
               patch.unifiedDiff,
               true,
             );
@@ -377,8 +386,7 @@ export async function runAudit(
     return { exitCode: prioritized.length > 0 ? 1 : 0 };
   } catch (e) {
     logger.error(`Internal error: ${String(e)}`);
-    if (e instanceof Error && e.stack)
-      logger.trace(`Stack: ${e.stack}`);
+    if (e instanceof Error && e.stack) logger.trace(`Stack: ${e.stack}`);
     if (e instanceof Error && e.cause)
       logger.trace(`Caused by: ${String(e.cause)}`);
     return { exitCode: 2 };

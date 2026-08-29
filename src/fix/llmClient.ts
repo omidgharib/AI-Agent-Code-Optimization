@@ -4,10 +4,7 @@ import type { FixRequest, FixResponse } from "../core/types";
 import type { FixTracer } from "../core/fixTrace";
 import { FixResponseSchema } from "../core/schemas";
 import { buildChatUrl } from "../core/models";
-import {
-  describeNetworkError,
-  isTimeoutLike,
-} from "../core/errorDiagnosis";
+import { describeNetworkError, isTimeoutLike } from "../core/errorDiagnosis";
 import { logger } from "../core/logger";
 
 export interface LLMClientConfig {
@@ -77,16 +74,23 @@ function asString(v: unknown): string | undefined {
 
 // Normalize anything near FixResponse (bare patch object / patches array /
 // {fixes:[{filePath,diff}]} style) into the wrapper shape before schema validation.
-function coerceFixResponse(raw: unknown): unknown {
+// Exported for tests.
+export function coerceFixResponse(raw: unknown): unknown {
   if (Array.isArray(raw)) {
     const patches = raw
       .filter(
         (p): p is Record<string, unknown> =>
           p !== null && typeof p === "object",
       )
-      .filter((p) => typeof p.unifiedDiff === "string" || typeof p.diff === "string" || typeof p.patch === "string")
+      .filter(
+        (p) =>
+          typeof p.unifiedDiff === "string" ||
+          typeof p.diff === "string" ||
+          typeof p.patch === "string",
+      )
       .map((p) => {
-        const diff = asString(p.unifiedDiff) ?? asString(p.diff) ?? asString(p.patch);
+        const diff =
+          asString(p.unifiedDiff) ?? asString(p.diff) ?? asString(p.patch);
         return {
           description:
             asString(p.description) ??
@@ -106,6 +110,50 @@ function coerceFixResponse(raw: unknown): unknown {
   if (raw && typeof raw === "object") {
     const o = raw as Record<string, unknown>;
     const topLevelMessage = asString(o.message);
+
+    // ForgetMeAI / some proxies respond with { message, actions:[{action,
+    // file, diff}] }. Each action is a single-file unified diff.
+    if (Array.isArray(o.actions)) {
+      const patches = o.actions
+        .filter(
+          (a): a is Record<string, unknown> =>
+            a !== null && typeof a === "object",
+        )
+        .filter(
+          (a) =>
+            typeof a.diff === "string" ||
+            (typeof a.action === "string" && typeof a.file === "string"),
+        )
+        .map((a) => {
+          const diff = asString(a.diff) ?? "";
+          // The proxy returns bare unified diffs (no `diff --git` / `--- /`+ /`
+          // `+++ /` wrapper). If headers are missing, synthesize them so the
+          // applier can resolve the target and rebuild the file safely.
+          const hasHeaders = /^--- .+\n\+\+\+ /.test(diff);
+          const file = asString(a.file);
+          const fullDiff =
+            !hasHeaders && file
+              ? `--- a/${file}\n+++ b/${file}\n${diff}`
+              : diff;
+          return {
+            description:
+              asString(a.description) ??
+              asString(a.message) ??
+              `Fix in ${file ?? "?"}`,
+            unifiedDiff: fullDiff,
+            touches: file ? [file] : [],
+          };
+        });
+      return {
+        patches,
+        notes: Array.isArray(o.notes)
+          ? o.notes
+          : topLevelMessage
+            ? [topLevelMessage]
+            : [],
+      };
+    }
+
     if (Array.isArray(o.fixes)) {
       const patches = o.fixes
         .filter(
@@ -113,16 +161,22 @@ function coerceFixResponse(raw: unknown): unknown {
             f !== null && typeof f === "object",
         )
         .filter(
-          (f) => typeof f.diff === "string" || typeof f.unifiedDiff === "string" || typeof f.patch === "string",
+          (f) =>
+            typeof f.diff === "string" ||
+            typeof f.unifiedDiff === "string" ||
+            typeof f.patch === "string",
         )
         .map((f) => {
-          const diff = asString(f.unifiedDiff) ?? asString(f.diff) ?? asString(f.patch);
+          const diff =
+            asString(f.unifiedDiff) ?? asString(f.diff) ?? asString(f.patch);
           return {
             description:
               asString(f.description) ??
               `Fix in ${asString(f.filePath) ?? "?"}`,
             unifiedDiff: diff,
-            touches: asString(f.filePath) ? [asString(f.filePath) as string] : [],
+            touches: asString(f.filePath)
+              ? [asString(f.filePath) as string]
+              : [],
           };
         });
       return {
@@ -143,17 +197,23 @@ function coerceFixResponse(raw: unknown): unknown {
             c !== null && typeof c === "object",
         )
         .filter(
-          (c) => typeof c.diff === "string" || typeof c.unifiedDiff === "string" || typeof c.patch === "string",
+          (c) =>
+            typeof c.diff === "string" ||
+            typeof c.unifiedDiff === "string" ||
+            typeof c.patch === "string",
         )
         .map((c) => {
-          const diff = asString(c.unifiedDiff) ?? asString(c.diff) ?? asString(c.patch);
+          const diff =
+            asString(c.unifiedDiff) ?? asString(c.diff) ?? asString(c.patch);
           return {
             description:
               asString(c.description) ??
               asString(c.message) ??
               `Fix in ${asString(c.filePath) ?? "?"}`,
             unifiedDiff: diff,
-            touches: asString(c.filePath) ? [asString(c.filePath) as string] : [],
+            touches: asString(c.filePath)
+              ? [asString(c.filePath) as string]
+              : [],
           };
         });
       return {
@@ -203,10 +263,7 @@ export type EndpointDiagnosis =
   | { status: "warn"; message: string }
   | { status: "fatal"; message: string };
 
-function tcpProbe(
-  url: URL,
-  timeoutMs: number,
-): Promise<string | null> {
+function tcpProbe(url: URL, timeoutMs: number): Promise<string | null> {
   const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
   const host = url.hostname;
   return new Promise((resolve) => {
@@ -218,7 +275,8 @@ function tcpProbe(
       resolve(reason);
     };
     const timer = setTimeout(
-      () => finish(`TCP connect to ${host}:${port} timed out after ${timeoutMs}ms`),
+      () =>
+        finish(`TCP connect to ${host}:${port} timed out after ${timeoutMs}ms`),
       timeoutMs,
     );
     const sock = nodeNet.createConnection({ host, port });
@@ -349,7 +407,9 @@ async function attempt(
 
   const parsed = FixResponseSchema.safeParse(coerceFixResponse(raw));
   if (!parsed.success) {
-    logger.debug(`Raw model output that failed FixResponse validation:\n${content}`);
+    logger.debug(
+      `Raw model output that failed FixResponse validation:\n${content}`,
+    );
     const first = parsed.error.issues[0];
     const preview =
       content.length > 200 ? `${content.slice(0, 200)}…` : content;
@@ -424,7 +484,7 @@ export async function requestFix(
     {
       role: "system",
       content:
-        "You are an expert code-fixing agent. Return ONLY valid JSON matching FixResponse. Do not include markdown. Provide unified diffs only. When fixing an undefined reference (e.g. missing function, variable, import), you are expected to ADD the missing declaration in the affected file. If the provided file excerpt is truncated or shows only issue lines, rely on the issue message and line numbers to construct an accurate unified diff.",
+        "You are an expert code-fixing agent specialized in security, performance, style, and maintainability issues. Return ONLY valid JSON matching FixResponse. Do not include markdown. Provide unified diffs only. When fixing security issues, ensure all inputs are validated and sanitized. When fixing performance issues, optimize without breaking functionality. When fixing an undefined reference (e.g. missing function, variable, import), you are expected to ADD the missing declaration in the affected file. If the provided file excerpt is truncated or shows only issue lines, rely on the issue message and line numbers to construct an accurate unified diff. Diff rules: emit exactly one file per patch; do NOT rename, delete, or mode-change files; include --- / +++ headers (a/ and b/ prefixes optional on the +++ side) and at least one @@ hunk; never use @@ -0,0 +1,N @@ to create a file that already has content; never return an empty or whitespace-only diff.",
     },
     { role: "user", content: JSON.stringify(req) },
   ];
@@ -432,12 +492,21 @@ export async function requestFix(
   if (trace) trace.logAiRequest("request", req);
   const t0 = Date.now();
   try {
-    const result = await withRetries(requestLabel("POST", url), () => attempt(url, init));
-    if (trace) trace.logAiResponse("request", result.rawContent, result.data, Date.now() - t0);
+    const result = await withRetries(requestLabel("POST", url), () =>
+      attempt(url, init),
+    );
+    if (trace)
+      trace.logAiResponse(
+        "request",
+        result.rawContent,
+        result.data,
+        Date.now() - t0,
+      );
     return result.data;
   } catch (e) {
     const rawContent = (e as { rawContent?: string }).rawContent;
-    if (trace) trace.logAiError("request", String(e), Date.now() - t0, rawContent);
+    if (trace)
+      trace.logAiError("request", String(e), Date.now() - t0, rawContent);
     throw e;
   }
 }
@@ -460,7 +529,7 @@ export async function repairPatch(
     {
       role: "system",
       content:
-        "You generate unified diffs for a lint-fixing tool. A diff you produced earlier did not apply cleanly. Return ONLY valid JSON matching FixResponse (exactly one patch). The diff MUST apply cleanly and exactly against the CURRENT file contents provided below — copy context lines character-for-character, keep the correct file paths in the --- / +++ headers (strip any a/ b/ prefixes on the +++ side), and include enough exact context.",
+        "You generate unified diffs for a lint-fixing tool. A diff you produced earlier did not apply cleanly. Return ONLY valid JSON matching FixResponse (exactly one patch). The diff MUST apply cleanly and exactly against the CURRENT file contents provided below — copy context lines character-for-character, keep the correct file paths in the --- / +++ headers (strip any a/ b/ prefixes on the +++ side), and include enough exact context. Rules: exactly one file per patch; do NOT rename/delete/mode-change files; never use @@ -0,0 +1,N @@ to re-create an existing file — emit a context-based hunk instead; never return an empty or whitespace-only diff.",
     },
     {
       role: "user",
@@ -476,12 +545,21 @@ export async function repairPatch(
   if (trace) trace.logAiRequest("repair", req);
   const t0 = Date.now();
   try {
-    const result = await withRetries(requestLabel("POST", url), () => attempt(url, init));
-    if (trace) trace.logAiResponse("repair", result.rawContent, result.data, Date.now() - t0);
+    const result = await withRetries(requestLabel("POST", url), () =>
+      attempt(url, init),
+    );
+    if (trace)
+      trace.logAiResponse(
+        "repair",
+        result.rawContent,
+        result.data,
+        Date.now() - t0,
+      );
     return result.data;
   } catch (e) {
     const rawContent = (e as { rawContent?: string }).rawContent;
-    if (trace) trace.logAiError("repair", String(e), Date.now() - t0, rawContent);
+    if (trace)
+      trace.logAiError("repair", String(e), Date.now() - t0, rawContent);
     throw e;
   }
 }

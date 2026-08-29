@@ -89,6 +89,111 @@ describe("applyDiff", () => {
       "const a = 1;\nconst b = 2;",
     );
   });
+
+  it("refuses a create-file hunk against a file that already has content (no corruption)", async () => {
+    const p = join(dir, "package.json");
+    writeFileSync(p, `{\n  "name": "x",\n  "type": "module"\n}\n`);
+
+    // This is exactly the diff that used to corrupt package.json by splicing
+    // a second JSON object into the existing one.
+    const diff = `--- a/package.json
++++ b/package.json
+@@ -0,0 +1,3 @@
++{
++  "type": "module"
++}
+`;
+    const result = await applyDiff(diff, dir, false);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/already exists with content/);
+    expect(readFileSync(p, "utf8")).toBe(`{\n  "name": "x",\n  "type": "module"\n}\n`);
+  });
+
+  it("rejects a rename-only diff", async () => {
+    const diff = `diff --git a/eslint.config.js b/eslint.config.mjs
+similarity index 100%
+rename from eslint.config.js
+rename to eslint.config.mjs
+`;
+    const result = await applyDiff(diff, dir, false);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/cannot rename files/);
+  });
+
+  it("rejects multi-file diffs", async () => {
+    const diff = `diff --git a/src/a.js b/src/a.js
+@@ -1,1 +1,2 @@
++x
+diff --git a/src/b.js b/src/b.js
+@@ -1,1 +1,2 @@
++y
+`;
+    const result = await applyDiff(diff, dir, false);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/multiple files/);
+  });
+
+  it("rejects empty diffs with no hunks", async () => {
+    const result = await applyDiff(
+      "diff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n",
+      dir,
+      false,
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/no @@ hunks/);
+  });
+
+  it("refuses diffs that escape the repo root via ../", async () => {
+    const p = join(dir, "src", "index.js");
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, `const a = 1;\n`);
+    const diff = `--- a/../outside.js
++++ b/../outside.js
+@@ -1,1 +1,2 @@
++const b = 2;
+`;
+    const result = await applyDiff(diff, dir, false);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/outside the repo root/);
+  });
+
+  it("refuses absolute diff targets", async () => {
+    const diff = `--- a/C:/Windows/win.ini
++++ b/C:/Windows/win.ini
+@@ -1,1 +1,2 @@
++evil
+`;
+    const result = await applyDiff(diff, dir, false);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/absolute diff target/);
+  });
+
+  it("refuses to modify generated and protected files", async () => {
+    const gen = await applyDiff(
+      `--- a/dev-dist/sw.js
++++ b/dev-dist/sw.js
+@@ -1,1 +1,2 @@
++/* eslint-disable */
+`,
+      dir,
+      false,
+    );
+    expect(gen.success).toBe(false);
+    expect(gen.error).toMatch(/generated/i);
+
+    const secret = await applyDiff(
+      `--- a/.env
++++ b/.env
+@@ -1,1 +1,2 @@
++API_KEY=123
+`,
+      dir,
+      false,
+    );
+    expect(secret.success).toBe(false);
+    expect(secret.error).toMatch(/protected/);
+  });
 });
 
 describe("getDiffTargetPath", () => {

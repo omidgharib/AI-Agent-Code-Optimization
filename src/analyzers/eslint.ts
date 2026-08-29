@@ -8,9 +8,18 @@ import type { Category, Issue, Severity } from "../core/types";
 const EXCLUDES = [
   "**/node_modules/**",
   "**/dist/**",
-  "**/.next/**",
+  "**/build/**",
+  "**/out/**",
   "**/coverage/**",
+  "**/dev-dist/**",
+  "**/.next/**",
+  "**/.nuxt/**",
+  "**/.cache/**",
+  "**/.parcel-cache/**",
+  "**/.turbo/**",
+  "**/vendor/**",
   "**/ai-auditor-report/**",
+  "**/*.min.*",
 ];
 
 // Never touch during autofix, even if a rule flags them.

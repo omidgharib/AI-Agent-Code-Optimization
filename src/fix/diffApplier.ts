@@ -24,9 +24,50 @@ interface Hunk {
   oldLines: string[];
 }
 
-function parseHunks(diff: string): { filePath: string; hunks: Hunk[] } | null {
+// Files the fix loop must never write to, no matter what the LLM's diff says
+// (mirrors the protected set documented in AGENTS.md / PROTECTED_IGNORES).
+const PROTECTED_PATH_RE =
+  /(^|\/)(\.git\/|\.env($|\.)|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|bun\.lockb|[^/]*\.lock$)/i;
+const GENERATED_DIR_RE = /^(\.git|node_modules|dist|build|out|coverage|dev-dist|vendor)\//;
+
+/**
+ * Resolve a diff target path against repoRoot, enforcing the path-safety model:
+ * relative paths only, containment inside repoRoot, and never a protected file.
+ * Returns an error message on violation, null when the path is safe.
+ */
+export function checkTargetPath(
+  filePath: string,
+  repoRoot: string,
+): string | null {
+  const cleaned = filePath.replace(/\\/g, "/").trim();
+  if (!cleaned || cleaned === "/dev/null") {
+    return "diff has no valid target path (---/+++ header missing or /dev/null; file deletions are not supported)";
+  }
+  if (/^[a-zA-Z]:[\\/]/.test(cleaned) || cleaned.startsWith("/")) {
+    return `refusing absolute diff target "${filePath}" — paths must be relative to the repo root`;
+  }
+  const abs = path.resolve(repoRoot, cleaned);
+  const rel = path.relative(path.resolve(repoRoot), abs);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+    return `refusing diff target "${filePath}" — it resolves outside the repo root`;
+  }
+  const posix = rel.split("\\").join("/");
+  if (PROTECTED_PATH_RE.test(posix)) {
+    return `refusing to modify protected file "${posix}"`;
+  }
+  if (GENERATED_DIR_RE.test(posix)) {
+    return `refusing to modify generated/vendored file "${posix}"`;
+  }
+  return null;
+}
+
+function parseHunks(
+  diff: string,
+): { filePath: string; hunks: Hunk[]; fileCount: number; renameOnly: boolean } | null {
   const lines = diff.split("\n");
   let filePath = "";
+  let fileCount = 0;
+  let sawRename = false;
   const hunks: Hunk[] = [];
   let current: Hunk | null = null;
 
@@ -34,7 +75,11 @@ function parseHunks(diff: string): { filePath: string; hunks: Hunk[] } | null {
     // LLM output is LF, but files/models on Windows may echo CRLF. Normalize
     // each line so line-ending style never causes a false mismatch.
     const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-    if (line.startsWith("+++ ")) {
+    if (line.startsWith("diff --git ")) {
+      fileCount++;
+    } else if (/^rename (from|to) /.test(line)) {
+      sawRename = true;
+    } else if (line.startsWith("+++ ")) {
       filePath = line.slice(4).replace(/^b\//, "").trim();
     } else if (line.startsWith("@@ ")) {
       const m = /@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
@@ -53,10 +98,13 @@ function parseHunks(diff: string): { filePath: string; hunks: Hunk[] } | null {
         current.newLines.push(line.slice(1));
         current.oldLines.push(line.slice(1));
       }
+      // "\ No newline at end of file" markers are intentionally ignored.
     }
   }
   if (current) hunks.push(current);
-  return filePath ? { filePath, hunks } : null;
+  return filePath || hunks.length > 0 || sawRename
+    ? { filePath, hunks, fileCount, renameOnly: sawRename && hunks.length === 0 }
+    : null;
 }
 
 /**
@@ -95,7 +143,32 @@ export async function applyDiff(
   const parsed = parseHunks(unifiedDiff);
   if (!parsed) return { success: false, error: "Could not parse diff" };
 
-  const { filePath, hunks } = parsed;
+  const { filePath, hunks, fileCount, renameOnly } = parsed;
+  if (renameOnly) {
+    return {
+      success: false,
+      error:
+        "unsupported diff: rename/mode-only change with no content hunks — this tool cannot rename files; emit a content diff against an existing path instead",
+    };
+  }
+  if (fileCount > 1) {
+    return {
+      success: false,
+      error:
+        "unsupported diff: multiple files in one patch — send exactly one file per patch",
+    };
+  }
+  if (hunks.length === 0) {
+    return {
+      success: false,
+      error:
+        "diff contains no @@ hunks (nothing to apply) — emit a unified diff with ---/+++ headers and at least one hunk",
+    };
+  }
+
+  const pathError = checkTargetPath(filePath, repoRoot);
+  if (pathError) return { success: false, error: pathError };
+
   const absPath = path.resolve(repoRoot, filePath);
   const backupDir = path.join(repoRoot, ".ai-auditor-backup");
   const gitRepo = await isGitRepo(repoRoot);
@@ -117,25 +190,49 @@ export async function applyDiff(
     return { success: false, error: `File not found: ${absPath}` };
   }
 
-  if (!gitRepo) await backupFile(absPath, backupDir);
+  // A create-file hunk (@@ -0,0) against a file that ALREADY exists used to
+  // silently splice its lines into the existing content (corrupting e.g.
+  // package.json). Refuse it outright unless the target is empty.
+  const isCreateOnly = hunks.every((h) => h.oldCount === 0);
+  const hadBom = content.charCodeAt(0) === 0xfeff;
+  const body = hadBom ? content.slice(1) : content;
+  if (isCreateOnly && body.trim() !== "") {
+    return {
+      success: false,
+      error: `refusing new-file diff (@@ -0,0) for "${filePath}" — the file already exists with content; modify it with a context-based hunk instead`,
+    };
+  }
+
+  if (!gitRepo && !dryRun) await backupFile(absPath, backupDir);
 
   // Normalize the file's line endings to LF for matching, but write the result
   // back with the file's original style (CRLF stays CRLF on Windows).
-  const hadBom = content.charCodeAt(0) === 0xfeff;
-  const body = hadBom ? content.slice(1) : content;
   const crlf = body.includes("\r\n");
   const fileLines = body.replace(/\r\n/g, "\n").split("\n");
   let offset = 0;
 
   for (const hunk of hunks) {
     const start = hunk.oldStart - 1 + offset;
+    // Negative or past-EOF starts must fail loudly; splice() with a negative
+    // index would silently insert lines at the wrong place.
+    if (start < 0 || start > fileLines.length) {
+      if (gitRepo) await git(["checkout", "--", absPath], repoRoot);
+      else if (!dryRun) {
+        const backup = path.join(backupDir, filePath.replace(/[/\\:]/g, "_"));
+        await fs.copyFile(backup, absPath).catch(() => {});
+      }
+      return {
+        success: false,
+        error: `Hunk mismatch at line ${hunk.oldStart}: hunk targets line ${start + 1} but the file only has ${fileLines.length} lines. The model's context lines may be stale — check ${filePath}`,
+      };
+    }
     const actual = fileLines
       .slice(start, start + hunk.oldLines.length)
       .join("\n");
     const expected = hunk.oldLines.join("\n");
     if (actual !== expected) {
       if (gitRepo) await git(["checkout", "--", absPath], repoRoot);
-      else {
+      else if (!dryRun) {
         const backup = path.join(backupDir, filePath.replace(/[/\\:]/g, "_"));
         await fs.copyFile(backup, absPath).catch(() => {});
       }
