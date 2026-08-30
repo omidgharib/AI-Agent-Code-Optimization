@@ -19,6 +19,7 @@ export function buildConfig(
     md: opts.md ?? false,
     fix: opts.fix ?? false,
     maxFixIterations: opts.maxFixIterations ?? 2,
+    fixBatch: opts.fixBatch ?? 10,
     include: opts.include ?? [],
     exclude: opts.exclude ?? [
       "node_modules",

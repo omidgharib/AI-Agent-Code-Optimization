@@ -2,9 +2,10 @@
 import type { FixStrategy, Issue } from "../core/types";
 
 export function selectStrategy(issue: Issue): FixStrategy {
+  const filePath = issue.location?.filePath;
   if (
     (issue.tool === "lighthouse" || issue.tool === "custom") &&
-    !issue.location?.filePath
+    (!filePath || filePath === "-")
   ) {
     return "advisory";
   }

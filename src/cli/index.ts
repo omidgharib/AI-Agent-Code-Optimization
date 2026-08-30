@@ -23,7 +23,16 @@ program
     "--no-mechanical",
     "Skip the mechanical ESLint autofix pre-pass (run before the LLM)",
   )
-  .option("--max-fix-iterations <n>", "Max fix iterations", "2")
+  .option(
+    "--max-fix-iterations <n>",
+    "Max fix iterations",
+    "2",
+  )
+  .option(
+    "--fix-batch <n>",
+    "Issues sent to the LLM per fix/advisory iteration (default 10)",
+    "10",
+  )
   .option(
     "--patch-retries <n>",
     "How many times to ask the LLM to repair a diff that failed to apply (default 1)",
@@ -68,6 +77,7 @@ program
       fix: opts.fix ?? false,
       mechanicalAutofix: opts.mechanical ?? true,
       maxFixIterations: parseInt(opts.maxFixIterations, 10),
+      fixBatch: parseInt(opts.fixBatch, 10),
       patchRetries: parseInt(opts.patchRetries, 10),
       include: opts.include ?? [],
       exclude: opts.exclude,

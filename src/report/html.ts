@@ -655,6 +655,8 @@ export function toHtml(data: ReportData): string {
   .mini{font-size:.72rem;color:#94a3b8;white-space:pre-wrap;word-break:break-all;background:#0f172a;padding:8px;border-radius:6px;margin-top:6px;max-height:180px;overflow:auto}
   .stack{font-size:.72rem;color:#f87171;white-space:pre-wrap;background:#0f172a;padding:10px;border-radius:6px;margin-top:8px;overflow:auto}
   .objdump{padding:4px 0}
+  .rec-list{padding:8px 20px}
+  .rec-item{padding:8px 0;color:#cbd5e1;font-size:.85rem;line-height:1.5;border-bottom:1px dashed #1e293b;white-space:pre-wrap;word-break:break-word}
   .pair{display:flex;gap:10px;padding:3px 0;font-size:.8rem;border-bottom:1px dashed #1e293b}
   .pair .k{color:#64748b;min-width:140px}
   .sep{border:0;border-top:1px solid #334155;margin:8px 0}
@@ -701,6 +703,16 @@ export function toHtml(data: ReportData): string {
       <thead><tr><th>Description</th><th>Files Touched</th></tr></thead>
       <tbody>${patchRows}</tbody>
     </table>
+  </div>`
+      : ""
+  }
+  ${
+    data.recommendations.length > 0
+      ? `<div class="section">
+    <div class="section-header">LLM Recommendations (${data.recommendations.length})</div>
+    <div class="rec-list">${data.recommendations
+      .map((r) => `<div class="rec-item">${esc(r)}</div>`)
+      .join("")}</div>
   </div>`
       : ""
   }

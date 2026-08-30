@@ -9,7 +9,7 @@ import { runLighthouse } from "../analyzers/lighthouse";
 import { normalize } from "../normalize/normalizer";
 import { prioritize } from "../prioritize/prioritize";
 import { buildContext } from "../fix/contextBuilder";
-import { selectIssuesForFix } from "../fix/fixPlanner";
+import { selectAdvisoryIssues, selectIssuesForFix } from "../fix/fixPlanner";
 import {
   requestFix,
   repairPatch,
@@ -82,6 +82,7 @@ export async function runAudit(
   const reportTs = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const reportDir = path.join(outDir, reportTs);
   const allPatches: FixResponse["patches"] = [];
+  const recommendations: string[] = [];
   const verificationErrors: string[] = [];
   let trace: FixTracer | undefined;
 
@@ -169,16 +170,28 @@ export async function runAudit(
       );
       logger.debug(`Trace log: ${path.join(reportDir, "trace.json")}`);
 
+      // Advisory pool is captured before the diff loop: re-analysis after
+      // applied patches skips Lighthouse (no re-run), which would otherwise
+      // silently drop every remaining URL-level finding.
+      const advisoryPool = selectAdvisoryIssues(prioritized);
+
+      let traceIteration = 0;
       for (let iter = 0; iter < config.maxFixIterations; iter++) {
-        const planned = selectIssuesForFix(prioritized);
+        const planned = selectIssuesForFix(prioritized, config.fixBatch);
         const selected = planned
           .flatMap((p) => p.issues)
           .filter((i) => !mechanicallyFixedIds.has(i.id));
         if (selected.length === 0) {
           if (planned.length === 0) {
-            logger.info(
-              "No LLM-fixable issues left (the LLM only handles style / maintainability / security / performance / autofixable issues).",
-            );
+            if (advisoryPool.length > 0) {
+              logger.info(
+                "No file-based issues left for LLM diff fixes (Lighthouse/custom recommendations are handled next).",
+              );
+            } else {
+              logger.info(
+                "No LLM-fixable issues left (the LLM only handles style / maintainability / security / performance / autofixable issues).",
+              );
+            }
           }
           break;
         }
@@ -188,7 +201,7 @@ export async function runAudit(
         );
         const context = await buildContext(selected);
 
-        trace.logIterationStart(iter, selected, context);
+        trace.logIterationStart(++traceIteration, selected, context);
 
         let fixResponse: FixResponse;
         try {
@@ -235,17 +248,27 @@ export async function runAudit(
           break;
         }
 
+        for (const note of fixResponse.notes) {
+          logger.info(`LLM advisory: ${note}`);
+          recommendations.push(note);
+        }
+
         if (fixResponse.patches.length === 0) {
-          logger.info("No patches returned, stopping fix loop");
+          if (recommendations.length > 0) {
+            logger.info(
+              "LLM returned recommendations only (no file diffs) — stopping fix loop",
+            );
+          } else {
+            logger.info("No patches returned, stopping fix loop");
+          }
           break;
         }
 
         let anyApplied = false;
         for (const patch of fixResponse.patches) {
           if (!patch.unifiedDiff || !patch.unifiedDiff.trim()) {
-            logger.warn(
-              `Patch "${patch.description}" is empty (no diff) — skipping`,
-            );
+            logger.info(`Advisory recommendation: ${patch.description}`);
+            recommendations.push(patch.description);
             continue;
           }
           let result = await applyDiff(
@@ -363,6 +386,71 @@ export async function runAudit(
         }
         prioritized = newPrioritized;
       }
+
+      // Advisory recommendations: Lighthouse/custom findings have no file
+      // target, so they can't be diffed. Batch them to the LLM until every
+      // allowed issue has received guidance. Each batch is a bounded request
+      // and nothing here modifies the repo, so this pass is not limited by
+      // maxFixIterations — it simply drains the advisory pool.
+      if (advisoryPool.length > 0) {
+        const totalBatches = Math.ceil(advisoryPool.length / config.fixBatch);
+        let batchNo = 0;
+        for (let i = 0; i < advisoryPool.length; i += config.fixBatch) {
+          batchNo++;
+          const batch = advisoryPool.slice(i, i + config.fixBatch);
+          logger.info(
+            `Advisory batch ${batchNo}/${totalBatches}: ${batch.length} issues`,
+          );
+
+          trace.logIterationStart(++traceIteration, batch, []);
+          let fixResponse: FixResponse;
+          try {
+            fixResponse = await requestFix(
+              {
+                baseUrl: config.baseUrl,
+                apiKey: config.apiKey,
+                model: config.model,
+              },
+              {
+                repoRoot,
+                issues: batch,
+                context: [],
+                constraints: {
+                  maxFilesChanged: 5,
+                  preferMinimalDiff: true,
+                  doNotChangePublicAPI: false,
+                  keepFormatting: true,
+                },
+              },
+              trace,
+            );
+          } catch (e) {
+            logger.error(
+              `LLM advisory request failed (batch ${batchNo}/${totalBatches}): ${String(e)}`,
+            );
+            verificationErrors.push(String(e));
+            break;
+          }
+
+          for (const note of fixResponse.notes) {
+            logger.info(`LLM advisory: ${note}`);
+            recommendations.push(note);
+          }
+          if (fixResponse.notes.length === 0) {
+            logger.warn(
+              `Advisory batch ${batchNo}/${totalBatches} returned no recommendations`,
+            );
+          }
+          if (fixResponse.patches.length > 0) {
+            logger.debug(
+              `Ignoring ${fixResponse.patches.length} diff(s) returned for advisory-only issues`,
+            );
+          }
+        }
+        logger.success(
+          `Advisory complete: ${advisoryPool.length} issues across ${totalBatches} batches`,
+        );
+      }
     }
 
     const verificationPassed = verificationErrors.length === 0;
@@ -379,6 +467,7 @@ export async function runAudit(
         reportDir,
       },
       lighthouse,
+      recommendations,
     );
 
     if (config.json || config.md) logger.info(`Report written to ${reportDir}`);

@@ -87,6 +87,7 @@ export interface ReportData {
   topIssues: PrioritizedIssue[];
   tools: Record<string, PrioritizedIssue[]>;
   patches: { description: string; touches: string[] }[];
+  recommendations: string[];
   verification: { passed: boolean; errors: string[] };
   lighthouse?: LighthouseReport; // ← فیلد جدید (اختیاری)
 }

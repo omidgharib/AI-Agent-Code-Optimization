@@ -24,7 +24,14 @@ function makeId(url: string, audit: string) {
     .slice(0, 16);
 }
 
-function mapCategory(auditId: string): Issue["category"] {
+export function mapCategory(auditId: string): Issue["category"] {
+  const securityAudits = new Set([
+    "is-on-https",
+    "redirects-http",
+    "csp-xss",
+    "no-vulnerable-libraries",
+    "password-inputs-can-be-pasted-into",
+  ]);
   const seoAudits = new Set([
     "meta-description",
     "document-title",
@@ -55,6 +62,7 @@ function mapCategory(auditId: string): Issue["category"] {
     "cumulative-layout-shift",
     "first-contentful-paint",
   ]);
+  if (securityAudits.has(auditId)) return "security";
   if (seoAudits.has(auditId)) return "seo";
   if (perfAudits.has(auditId)) return "performance";
   return "maintainability";

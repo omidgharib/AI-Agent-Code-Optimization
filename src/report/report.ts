@@ -68,6 +68,7 @@ export async function writeReport(
   verification: { passed: boolean; errors: string[] },
   config: { json: boolean; md: boolean; html: boolean; outDir: string; reportDir?: string },
   lighthouse?: LighthouseReport,
+  recommendations: string[] = [],
 ): Promise<void> {
   const outDir = config.reportDir ?? path.join(config.outDir, new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19));
   await fs.mkdir(outDir, { recursive: true });
@@ -82,6 +83,7 @@ export async function writeReport(
       description: p.description,
       touches: p.touches,
     })),
+    recommendations,
     verification,
     ...(lighthouse ? { lighthouse } : {}),
   };

@@ -76,6 +76,7 @@ export interface AuditConfig {
   md: boolean;
   fix: boolean;
   maxFixIterations: number;
+  fixBatch: number;
   include: string[];
   exclude: string[];
   severity?: Severity;

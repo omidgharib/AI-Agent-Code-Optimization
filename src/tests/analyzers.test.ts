@@ -1,7 +1,21 @@
 // FILE: tests/analyzers.test.ts
 import { mapCategory as eslintMapCategory } from "../analyzers/eslint";
+import { mapCategory as lighthouseMapCategory } from "../analyzers/lighthouse";
 import { mapCategory as tscMapCategory } from "../analyzers/tscParse";
 import { parseTscOutput } from "../analyzers/tscParse";
+
+// lighthouse.ts transitively imports the logger (chalk, ESM). Stub it so
+// Jest's ts-jest pipeline doesn't try to transform chalk.
+jest.mock("../core/logger", () => ({
+  logger: {
+    trace: jest.fn(),
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    success: jest.fn(),
+  },
+}));
 
 describe("eslint category mapping", () => {
   it("maps security rules", () => {
@@ -21,6 +35,32 @@ describe("eslint category mapping", () => {
   });
   it("defaults unknown rules to maintainability", () => {
     expect(eslintMapCategory("some-unknown-rule")).toBe("maintainability");
+  });
+});
+
+describe("lighthouse category mapping", () => {
+  it("maps security audits", () => {
+    for (const auditId of [
+      "is-on-https",
+      "redirects-http",
+      "csp-xss",
+      "no-vulnerable-libraries",
+      "password-inputs-can-be-pasted-into",
+    ]) {
+      expect(lighthouseMapCategory(auditId)).toBe("security");
+    }
+  });
+  it("maps performance audits", () => {
+    expect(lighthouseMapCategory("unused-javascript")).toBe("performance");
+    expect(lighthouseMapCategory("largest-contentful-paint")).toBe(
+      "performance",
+    );
+  });
+  it("maps seo audits", () => {
+    expect(lighthouseMapCategory("meta-description")).toBe("seo");
+  });
+  it("defaults other audits to maintainability", () => {
+    expect(lighthouseMapCategory("color-contrast")).toBe("maintainability");
   });
 });
 

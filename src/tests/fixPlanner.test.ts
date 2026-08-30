@@ -1,6 +1,9 @@
 // FILE: tests/fixPlanner.test.ts
 import { selectStrategy } from "../fix/strategy";
-import { selectIssuesForFix } from "../fix/fixPlanner";
+import {
+  selectAdvisoryIssues,
+  selectIssuesForFix,
+} from "../fix/fixPlanner";
 import type { Issue, PrioritizedIssue } from "../core/types";
 
 const makeIssue = (overrides: Partial<Issue>): Issue => ({
@@ -96,13 +99,54 @@ describe("selectIssuesForFix", () => {
     expect(selectIssuesForFix([skipped])).toHaveLength(0);
   });
 
-  it("excludes advisory (no-file) issues from the LLM fix pool", () => {
+  it("excludes advisory (no-file) issues from the diff-based fix pool", () => {
     const lighthouse = makePrioritized({
       tool: "lighthouse",
       category: "maintainability",
       location: { filePath: "-" },
     });
-    expect(selectIssuesForFix([lighthouse])).toHaveLength(0);
+    const perf = makePrioritized({
+      tool: "lighthouse",
+      category: "performance",
+      location: { filePath: "-" },
+    });
+    expect(selectIssuesForFix([lighthouse, perf])).toHaveLength(0);
+  });
+
+  it("still excludes no-file issues from tools without an advisory strategy", () => {
+    const tscGlobal = makePrioritized({
+      tool: "tsc",
+      category: "maintainability",
+      location: undefined,
+    });
+    expect(selectIssuesForFix([tscGlobal])).toHaveLength(0);
+    expect(selectAdvisoryIssues([tscGlobal])).toHaveLength(0);
+  });
+
+  it("selects advisory (no-file) lighthouse issues into the advisory pool", () => {
+    const lighthouse = makePrioritized({
+      tool: "lighthouse",
+      category: "maintainability",
+      location: { filePath: "-" },
+    });
+    const perf = makePrioritized({
+      tool: "lighthouse",
+      category: "performance",
+      location: { filePath: "-" },
+    });
+    expect(selectAdvisoryIssues([lighthouse, perf])).toEqual([
+      lighthouse,
+      perf,
+    ]);
+  });
+
+  it("drops seo/a11y/bug advisory issues that the LLM does not handle", () => {
+    const seo = makePrioritized({
+      tool: "lighthouse",
+      category: "seo",
+      location: { filePath: "-" },
+    });
+    expect(selectAdvisoryIssues([seo])).toHaveLength(0);
   });
 
   it("excludes generated dirs and tool config files from the LLM fix pool", () => {

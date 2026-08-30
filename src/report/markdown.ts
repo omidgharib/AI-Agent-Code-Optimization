@@ -69,6 +69,10 @@ export function toMarkdown(data: ReportData): string {
     for (const p of data.patches)
       lines.push(`- ${p.description} (touches: ${p.touches.join(", ")})`);
   }
+  if (data.recommendations.length > 0) {
+    lines.push("\n## Recommendations (LLM)");
+    for (const r of data.recommendations) lines.push(`- ${mdEscape(r)}`);
+  }
   lines.push(`\n## Verification\n- Passed: ${data.verification.passed}`);
   if (data.verification.errors.length > 0) {
     lines.push("### Errors");
