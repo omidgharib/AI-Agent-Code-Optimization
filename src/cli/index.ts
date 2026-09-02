@@ -48,6 +48,8 @@ program
   .option("--provider <id>", "Model provider preset (see --list-models)")
   .option("--base-url <url>", "LLM base URL")
   .option("--api-key <key>", "LLM API key")
+  .option("--aifa-user-id <id>", "AIFA end-user ID (required for AIFA)")
+  .option("--aifa-session-id <id>", "AIFA conversation session ID (optional)")
   .option("--list-models", "List available model providers and exit")
   .option("--dry-run", "Preview fixes without applying")
   .option("--agent-mode <mode>", "Agent mode (suggest|dry-run|apply)")
@@ -108,6 +110,8 @@ program
       provider: opts.provider,
       baseUrl: opts.baseUrl,
       apiKey: opts.apiKey,
+      aifaUserId: opts.aifaUserId,
+      aifaSessionId: opts.aifaSessionId,
       dryRun: agentMode !== "apply",
       agentMode,
       issueIds: typeof opts.issueIds === "string" ? opts.issueIds.split(",").map((id: string) => id.trim()).filter(Boolean) : [],

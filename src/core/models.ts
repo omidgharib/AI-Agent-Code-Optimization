@@ -34,6 +34,17 @@ export const MODEL_PROVIDERS: Record<string, ModelProvider> = {
     description:
       "OpenAI paid models. Default provider when OPENAI_API_KEY is set.",
   },
+  aifa: {
+    id: "aifa",
+    label: "AIFA (Sandpod)",
+    model: "assistance-model",
+    baseUrl: "https://aifa-chatbot.sandpod.ir/v1",
+    keyRequired: true,
+    keyEnv: "AIFA_ACCESS_TOKEN",
+    free: false,
+    description:
+      "AIFA OpenAI-compatible chat service. Pass the user-provided access token with --api-key (or AIFA_ACCESS_TOKEN) and the required end-user ID with --aifa-user-id (or AIFA_USER_ID).",
+  },
   ollama: {
     id: "ollama",
     label: "Ollama (local, free)",

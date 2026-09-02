@@ -203,6 +203,12 @@ export async function runAudit(
         );
         return { exitCode: 2 };
       }
+      if (config.provider === "aifa" && !config.aifaUserId) {
+        logger.error(
+          '--fix with provider "aifa" requires an end-user ID (set --aifa-user-id or AIFA_USER_ID)',
+        );
+        return { exitCode: 2 };
+      }
 
       logger.debug(
         `Fix endpoint: ${config.provider} → model "${config.model}" @ ${config.baseUrl}${config.apiKey ? " (with API key)" : " (no API key)"}; up to ${MAX_ATTEMPTS} attempts per request`,
@@ -331,6 +337,9 @@ export async function runAudit(
               baseUrl: config.baseUrl,
               apiKey: config.apiKey,
               model: config.model,
+              provider: config.provider,
+              userId: config.aifaUserId,
+              sessionId: config.aifaSessionId,
             },
             {
               repoRoot,
@@ -448,6 +457,9 @@ export async function runAudit(
                   baseUrl: config.baseUrl,
                   apiKey: config.apiKey,
                   model: config.model,
+                  provider: config.provider,
+                  userId: config.aifaUserId,
+                  sessionId: config.aifaSessionId,
                 },
                 {
                   repoRoot,
@@ -594,6 +606,9 @@ export async function runAudit(
                 baseUrl: config.baseUrl,
                 apiKey: config.apiKey,
                 model: config.analysisModel,
+                provider: config.provider,
+                userId: config.aifaUserId,
+                sessionId: config.aifaSessionId,
               },
               {
                 repoRoot,

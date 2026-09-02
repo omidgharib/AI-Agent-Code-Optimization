@@ -146,6 +146,12 @@ function modelCatalog() {
 async function discoverModels(providerId: string, overrideBaseUrl?: string) {
   const provider = MODEL_PROVIDERS[providerId];
   if (!provider) throw new Error("Unknown model provider");
+  if (providerId === "aifa")
+    return {
+      provider: providerId,
+      online: true,
+      models: [{ id: "assistance-model" }, { id: "developer-model" }],
+    };
   const resolved = resolveModel({ provider: providerId, baseUrl: overrideBaseUrl });
   const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(resolved.baseUrl);
   if (resolved.keyRequired && !resolved.apiKey && !local)
@@ -271,7 +277,17 @@ function startJob(job: AuditJob, options: Record<string, unknown>): void {
   if (typeof options.severity === "string" && ["low", "medium", "high", "critical"].includes(options.severity))
     args.push("--severity", options.severity);
 
-  const child = spawn(process.execPath, args, { cwd: job.projectPath, shell: false, windowsHide: true });
+  const childEnv = { ...process.env };
+  if (typeof options.apiKey === "string" && options.apiKey.trim()) {
+    const keyEnv = job.provider && MODEL_PROVIDERS[job.provider]?.keyEnv;
+    if (keyEnv) childEnv[keyEnv] = options.apiKey.trim();
+  }
+  if (job.provider === "aifa") {
+    if (typeof options.aifaUserId === "string") childEnv.AIFA_USER_ID = options.aifaUserId.trim();
+    if (typeof options.aifaSessionId === "string" && options.aifaSessionId.trim())
+      childEnv.AIFA_SESSION_ID = options.aifaSessionId.trim();
+  }
+  const child = spawn(process.execPath, args, { cwd: job.projectPath, shell: false, windowsHide: true, env: childEnv });
   job.child = child;
   child.stdout.on("data", (chunk: Buffer) => addLog(job, "stdout", chunk));
   child.stderr.on("data", (chunk: Buffer) => addLog(job, "stderr", chunk));
@@ -346,6 +362,14 @@ const server = http.createServer(async (req, res) => {
       const projectPath = await validateProject(input.projectPath);
       const auditUrl = validateAuditUrl(input.url);
       const selection = validateModelSelection(input);
+      if (selection.provider === "aifa" && input.fix === true) {
+        const token = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
+        const userId = typeof input.aifaUserId === "string" ? input.aifaUserId.trim() : "";
+        if (!token && !process.env.AIFA_ACCESS_TOKEN) throw new Error("AIFA access token is required");
+        if (!userId && !process.env.AIFA_USER_ID) throw new Error("AIFA user ID is required");
+        if ([token, userId, typeof input.aifaSessionId === "string" ? input.aifaSessionId : ""].some((value) => value.length > 512 || /[\0\r\n]/.test(value)))
+          throw new Error("AIFA credentials contain invalid characters or are too long");
+      }
       const job: AuditJob = { id: randomUUID(), projectPath, url: auditUrl, ...selection, status: "queued", createdAt: new Date().toISOString(), logs: [] };
       jobs.set(job.id, job);
       json(res, 202, publicJob(job));

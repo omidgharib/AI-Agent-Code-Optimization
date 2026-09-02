@@ -11,6 +11,7 @@ const ENV_KEYS = [
   "AI_AUDITOR_BASE_URL",
   "AI_AUDITOR_PROVIDER",
   "OPENROUTER_API_KEY",
+  "AIFA_ACCESS_TOKEN",
   "GROQ_API_KEY",
   "GEMINI_API_KEY",
   "MISTRAL_API_KEY",
@@ -98,6 +99,15 @@ describe("resolveModel", () => {
     expect(r.model).toBe("llama-3.3-70b-versatile");
     expect(r.baseUrl).toBe("https://api.groq.com/openai");
     expect(r.apiKey).toBe("gsk-test");
+    expect(r.keyRequired).toBe(true);
+  });
+
+  it("resolves AIFA with its user-provided access token", () => {
+    process.env.AIFA_ACCESS_TOKEN = "user-token";
+    const r = resolveModel({ provider: "aifa" });
+    expect(r.model).toBe("assistance-model");
+    expect(r.baseUrl).toBe("https://aifa-chatbot.sandpod.ir/v1");
+    expect(r.apiKey).toBe("user-token");
     expect(r.keyRequired).toBe(true);
   });
 

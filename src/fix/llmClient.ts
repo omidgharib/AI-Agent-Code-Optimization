@@ -12,6 +12,9 @@ export interface LLMClientConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  provider?: string;
+  userId?: string;
+  sessionId?: string;
 }
 
 export const MAX_ATTEMPTS = 3;
@@ -371,8 +374,11 @@ async function attempt(
   const label = requestLabel(init.method ?? "POST", url);
   let res: Response;
   try {
+    const headers = new Headers(init.headers);
+    if (headers.has("x-request-id")) headers.set("x-request-id", randomUUID());
     res = await fetch(url, {
       ...init,
+      headers,
       signal: AbortSignal.timeout(requestTimeoutMs()),
     });
   } catch (e) {
@@ -478,14 +484,17 @@ async function withRetries(
   throw lastError;
 }
 
-function chatInit(
-  config: LLMClientConfig,
-  messages: Array<{ role: string; content: string }>,
-): RequestInit {
+export function buildChatHeaders(config: LLMClientConfig): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+  if (config.provider === "aifa") {
+    headers["x-request-id"] = randomUUID();
+    if (config.userId) headers["x-user-id"] = config.userId;
+    if (config.sessionId) headers["x-session-id"] = config.sessionId;
+    headers.Accept = "application/json";
+  }
   try {
     const endpoint = new URL(config.baseUrl);
     if (
@@ -500,9 +509,16 @@ function chatInit(
   } catch {
     // URL validation and diagnostics happen elsewhere; keep request setup pure.
   }
+  return headers;
+}
+
+function chatInit(
+  config: LLMClientConfig,
+  messages: Array<{ role: string; content: string }>,
+): RequestInit {
   return {
     method: "POST",
-    headers,
+    headers: buildChatHeaders(config),
     body: JSON.stringify({ model: config.model, messages }),
   };
 }

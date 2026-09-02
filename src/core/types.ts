@@ -87,6 +87,8 @@ export interface AuditConfig {
   mechanicalAutofix: boolean;
   baseUrl: string;
   apiKey: string;
+  aifaUserId?: string;
+  aifaSessionId?: string;
   dryRun: boolean;
   verbose: boolean;
   html?: boolean;

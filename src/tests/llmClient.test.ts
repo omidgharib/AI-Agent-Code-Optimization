@@ -1,6 +1,6 @@
 // FILE: tests/errorAndDiagnosis.test.ts
 import { describeNetworkError } from "../core/errorDiagnosis";
-import { coerceFixResponse } from "../fix/llmClient";
+import { buildChatHeaders, coerceFixResponse } from "../fix/llmClient";
 
 // llmClient transitively imports the logger (chalk, ESM). Stub it so Jest's
 // ts-jest pipeline doesn't try to transform chalk.
@@ -127,5 +127,30 @@ describe("coerceFixResponse (ForgetMeAI actions format)", () => {
     expect(coerced.patches[0].unifiedDiff).toContain("+++ b/src/a.ts");
     expect(coerced.patches[0].touches).toEqual(["src/a.ts"]);
     expect(coerced.patches[0].description).toBeTruthy();
+  });
+});
+
+describe("AIFA request headers", () => {
+  it("adds bearer auth, tracing, user and optional session headers", () => {
+    const first = buildChatHeaders({
+      provider: "aifa",
+      baseUrl: "https://aifa-chatbot.sandpod.ir/v1",
+      model: "assistance-model",
+      apiKey: "user-token",
+      userId: "usr-100",
+      sessionId: "sess-001",
+    });
+    const second = buildChatHeaders({
+      provider: "aifa",
+      baseUrl: "https://aifa-chatbot.sandpod.ir/v1",
+      model: "developer-model",
+      apiKey: "user-token",
+      userId: "usr-100",
+    });
+    expect(first.Authorization).toBe("Bearer user-token");
+    expect(first["x-user-id"]).toBe("usr-100");
+    expect(first["x-session-id"]).toBe("sess-001");
+    expect(first["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(second["x-request-id"]).not.toBe(first["x-request-id"]);
   });
 });

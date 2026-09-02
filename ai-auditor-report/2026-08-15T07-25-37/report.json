@@ -1,0 +1,55 @@
+{
+  "summary": {
+    "total": 1,
+    "bySeverity": {
+      "medium": 1
+    },
+    "byCategory": {
+      "maintainability": 1
+    },
+    "byTool": {
+      "custom": 1
+    }
+  },
+  "topIssues": [
+    {
+      "id": "e69d87cd355f68c2",
+      "tool": "custom",
+      "message": "Lighthouse failed: EPERM, Permission denied: \\\\?\\C:\\Users\\Dotin\\AppData\\Local\\Temp\\lighthouse.24789441 '\\\\?\\C:\\Users\\Dotin\\AppData\\Local\\Temp\\lighthouse.24789441'",
+      "severity": "medium",
+      "category": "maintainability",
+      "score": 40,
+      "effort": "s",
+      "rationale": [
+        "severity=medium(+30)",
+        "category=maintainability(+10)",
+        "confidence=5",
+        "effort=s(-5)"
+      ]
+    }
+  ],
+  "tools": {
+    "custom": [
+      {
+        "id": "e69d87cd355f68c2",
+        "tool": "custom",
+        "message": "Lighthouse failed: EPERM, Permission denied: \\\\?\\C:\\Users\\Dotin\\AppData\\Local\\Temp\\lighthouse.24789441 '\\\\?\\C:\\Users\\Dotin\\AppData\\Local\\Temp\\lighthouse.24789441'",
+        "severity": "medium",
+        "category": "maintainability",
+        "score": 40,
+        "effort": "s",
+        "rationale": [
+          "severity=medium(+30)",
+          "category=maintainability(+10)",
+          "confidence=5",
+          "effort=s(-5)"
+        ]
+      }
+    ]
+  },
+  "patches": [],
+  "verification": {
+    "passed": true,
+    "errors": []
+  }
+}
