@@ -4,7 +4,10 @@ import { buildConfig } from "../core/config";
 import { runAudit } from "../core/engine";
 import { setDebug, setVerbose } from "../core/logger";
 import { listModels } from "../core/models";
-import type { Severity } from "../core/types";
+import type { AgentMode, Severity } from "../core/types";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { watch } from "node:fs";
 
 const program = new Command();
 
@@ -47,6 +50,23 @@ program
   .option("--api-key <key>", "LLM API key")
   .option("--list-models", "List available model providers and exit")
   .option("--dry-run", "Preview fixes without applying")
+  .option("--agent-mode <mode>", "Agent mode (suggest|dry-run|apply)")
+  .option("--issue-ids <ids>", "Comma-separated issue IDs to send to the agent")
+  .option("--max-ai-requests <n>", "Maximum model requests per audit", "10")
+  .option("--max-agent-seconds <n>", "Maximum total agent time in seconds", "300")
+  .option("--max-changed-files <n>", "Maximum files the agent may change", "5")
+  .option("--analysis-model <model>", "Separate model for advisory/analysis requests")
+  .option("--max-agent-tokens <n>", "Estimated input-token budget", "100000")
+  .option("--max-cost-usd <n>", "Estimated cost budget in USD; 0 disables", "0")
+  .option("--baseline <report.json>", "Compare against a baseline report")
+  .option("--max-critical <n>", "Quality gate: maximum critical issues")
+  .option("--max-high <n>", "Quality gate: maximum high issues")
+  .option("--fail-on-new", "Quality gate: fail when baseline has new issues")
+  .option("--min-performance <n>", "Quality gate: minimum Lighthouse performance score (0-100)")
+  .option("--min-accessibility <n>", "Quality gate: minimum Lighthouse accessibility score (0-100)")
+  .option("--min-seo <n>", "Quality gate: minimum Lighthouse SEO score (0-100)")
+  .option("--sarif", "Write report.sarif for CI/code hosting")
+  .option("--changed-only", "Report only issues in Git-changed files")
   .option("--verbose", "Verbose output")
   .option(
     "--debug",
@@ -69,12 +89,14 @@ program
       process.exit(0);
     }
 
+    const agentMode = (opts.agentMode ?? (opts.dryRun ? "dry-run" : "apply")) as AgentMode;
+    if (!["suggest", "dry-run", "apply"].includes(agentMode)) throw new Error("Invalid --agent-mode; use suggest, dry-run or apply");
     const config = buildConfig({
       path: auditPath ?? process.cwd(),
       url: opts.url,
       json: opts.json ?? false,
       md: opts.md ?? false,
-      fix: opts.fix ?? false,
+      fix: (opts.fix ?? false) || opts.agentMode !== undefined,
       mechanicalAutofix: opts.mechanical ?? true,
       maxFixIterations: parseInt(opts.maxFixIterations, 10),
       fixBatch: parseInt(opts.fixBatch, 10),
@@ -86,13 +108,73 @@ program
       provider: opts.provider,
       baseUrl: opts.baseUrl,
       apiKey: opts.apiKey,
-      dryRun: opts.dryRun ?? false,
+      dryRun: agentMode !== "apply",
+      agentMode,
+      issueIds: typeof opts.issueIds === "string" ? opts.issueIds.split(",").map((id: string) => id.trim()).filter(Boolean) : [],
+      maxAiRequests: parseInt(opts.maxAiRequests, 10),
+      maxAgentSeconds: parseInt(opts.maxAgentSeconds, 10),
+      maxChangedFiles: parseInt(opts.maxChangedFiles, 10),
+      analysisModel: opts.analysisModel,
+      maxAgentTokens: parseInt(opts.maxAgentTokens, 10),
+      maxCostUsd: parseFloat(opts.maxCostUsd),
+      baselinePath: opts.baseline,
+      maxCritical: opts.maxCritical === undefined ? undefined : parseInt(opts.maxCritical, 10),
+      maxHigh: opts.maxHigh === undefined ? undefined : parseInt(opts.maxHigh, 10),
+      failOnNew: opts.failOnNew ?? false,
+      minLighthouseScores: Object.fromEntries([["performance", opts.minPerformance], ["accessibility", opts.minAccessibility], ["seo", opts.minSeo]].filter((entry) => entry[1] !== undefined).map(([key, value]) => [key, Number(value)])),
+      sarif: opts.sarif ?? false,
+      changedOnly: opts.changedOnly ?? false,
       verbose: opts.verbose ?? false,
       html: opts.html ?? false,
     });
 
     const { exitCode } = await runAudit(config);
     process.exit(exitCode);
+  });
+
+program
+  .command("monitor [path]")
+  .description("Continuously audit a JavaScript/TypeScript project")
+  .option("--interval <minutes>", "Audit interval in minutes", "15")
+  .option("--retention <n>", "Number of report runs to retain", "30")
+  .option("--max-critical <n>", "Maximum critical issues", "0")
+  .option("--max-high <n>", "Maximum high issues", "0")
+  .option("--sarif", "Write SARIF on each run")
+  .option("--watch", "Run after source file changes instead of a fixed interval")
+  .option("--webhook <url>", "POST a notification when the quality gate fails")
+  .action(async (monitorPath: string | undefined, opts) => {
+    const projectPath = path.resolve(monitorPath ?? process.cwd());
+    const intervalMs = Math.max(1, Number(opts.interval)) * 60_000;
+    const retention = Math.max(1, Number(opts.retention));
+    const run = async () => {
+      const result = await runAudit(buildConfig({ path: projectPath, json: true, md: true, html: true, sarif: opts.sarif ?? false, maxCritical: Number(opts.maxCritical), maxHigh: Number(opts.maxHigh) }));
+      const reportRoot = path.join(projectPath, "ai-auditor-report");
+      try {
+        const dirs = (await fs.readdir(reportRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort().reverse();
+        for (const old of dirs.slice(retention)) {
+          const target = path.resolve(reportRoot, old);
+          if (path.dirname(target) === path.resolve(reportRoot)) await fs.rm(target, { recursive: true, force: true });
+        }
+      } catch { /* report directory may not exist yet */ }
+      console.log(`[monitor] ${new Date().toISOString()} exit=${result.exitCode}${result.exitCode === 3 ? " QUALITY GATE FAILED" : ""}`);
+      if (result.exitCode === 3 && opts.webhook) {
+        try { await fetch(String(opts.webhook), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ product: "ai-auditor", projectPath, status: "quality-gate-failed", at: new Date().toISOString() }) }); }
+        catch (error) { console.error(`[monitor] notification failed: ${String(error)}`); }
+      }
+    };
+    await run();
+    if (opts.watch) {
+      let timer: NodeJS.Timeout | undefined;
+      watch(projectPath, { recursive: true }, (_event, filename) => {
+        if (!filename || /(^|[\\/])(node_modules|dist|ai-auditor-report|\.git)([\\/]|$)/.test(filename)) return;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => void run(), 750);
+      });
+      console.log(`[monitor] watching source changes in ${projectPath}`);
+    } else {
+      setInterval(() => void run(), intervalMs);
+      console.log(`[monitor] auditing ${projectPath} every ${intervalMs / 60_000} minute(s)`);
+    }
   });
 
 program.parseAsync(process.argv).catch((e) => {

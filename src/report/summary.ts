@@ -1,4 +1,7 @@
 import type { PrioritizedIssue } from "../core/types";
+import type { QualityGateResult } from "../core/qualityGate";
+import type { SeoHealth } from "../analyzers/seoLab";
+import type { ArchitectureReport } from "../analyzers/architecture";
 
 export interface LighthouseCategory {
   id: string;
@@ -86,10 +89,23 @@ export interface ReportData {
   };
   topIssues: PrioritizedIssue[];
   tools: Record<string, PrioritizedIssue[]>;
-  patches: { description: string; touches: string[] }[];
+  patches: { description: string; touches: string[]; unifiedDiff?: string; status?: "suggested" | "preview" | "applied" }[];
   recommendations: string[];
+  fixSummary: {
+    mechanical: number;
+    mechanicalMode: "applied" | "dry-run";
+    aiPatches: number;
+    advisoryRecommendations: number;
+  };
   verification: { passed: boolean; errors: string[] };
+  agent?: { mode: string; provider: string; model: string; analysisModel?: string; requests: number; estimatedTokens?: number; estimatedCostUsd?: number; durationMs: number; changedFiles: number };
+  qualityGate?: QualityGateResult;
   lighthouse?: LighthouseReport; // ← فیلد جدید (اختیاری)
+  seoLab?: SeoHealth;
+  lighthouseDesktop?: LighthouseReport;
+  architecture?: ArchitectureReport;
+  testHealth?: { score: number; testedSources: number; totalSources: number; gaps: unknown[] };
+  performanceLab?: { performance: number; bundle: number };
 }
 
 export function buildSummary(

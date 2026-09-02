@@ -110,4 +110,22 @@ describe("coerceFixResponse (ForgetMeAI actions format)", () => {
     const coerced = coerceFixResponse(raw) as { patches: unknown[] };
     expect(coerced.patches).toHaveLength(1);
   });
+
+  it("normalizes filePath/diff aliases inside the patches wrapper", () => {
+    const raw = {
+      patches: [
+        {
+          filePath: "src/a.ts",
+          diff: "--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,1 +1,1 @@\n-a\n+b\n",
+        },
+      ],
+      notes: [],
+    };
+    const coerced = coerceFixResponse(raw) as {
+      patches: Array<{ description: string; unifiedDiff: string; touches: string[] }>;
+    };
+    expect(coerced.patches[0].unifiedDiff).toContain("+++ b/src/a.ts");
+    expect(coerced.patches[0].touches).toEqual(["src/a.ts"]);
+    expect(coerced.patches[0].description).toBeTruthy();
+  });
 });

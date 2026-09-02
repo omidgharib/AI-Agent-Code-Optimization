@@ -22,6 +22,7 @@ export type FixStrategy =
   | "local" // LLM, single file, small context
   | "cross-file" // LLM, multiple files, needs care/approval
   | "advisory"; // lighthouse et al., recommendations only, NO diff
+export type AgentMode = "suggest" | "dry-run" | "apply";
 
 export interface Issue {
   id: string;
@@ -90,4 +91,19 @@ export interface AuditConfig {
   verbose: boolean;
   html?: boolean;
   patchRetries: number;
+  agentMode: AgentMode;
+  issueIds: string[];
+  maxAiRequests: number;
+  maxAgentSeconds: number;
+  maxChangedFiles: number;
+  analysisModel: string;
+  maxAgentTokens: number;
+  maxCostUsd: number;
+  baselinePath?: string;
+  maxCritical: number;
+  maxHigh: number;
+  failOnNew: boolean;
+  minLighthouseScores: Record<string, number>;
+  sarif: boolean;
+  changedOnly: boolean;
 }

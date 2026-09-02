@@ -1,5 +1,6 @@
 // FILE: src/fix/llmClient.ts
 import * as nodeNet from "node:net";
+import { randomUUID } from "node:crypto";
 import type { FixRequest, FixResponse } from "../core/types";
 import type { FixTracer } from "../core/fixTrace";
 import { FixResponseSchema } from "../core/schemas";
@@ -220,6 +221,24 @@ export function coerceFixResponse(raw: unknown): unknown {
         patches,
         notes: Array.isArray(o.notes)
           ? o.notes
+          : topLevelMessage
+            ? [topLevelMessage]
+            : [],
+      };
+    }
+
+    // Some OpenAI-compatible models keep the expected `patches` wrapper but
+    // use common aliases inside it ({ filePath, diff }). Normalize the array
+    // through the same path used for bare patch arrays before validation.
+    if (Array.isArray(o.patches)) {
+      const normalized = coerceFixResponse(o.patches) as {
+        patches: unknown[];
+        notes: string[];
+      };
+      return {
+        patches: normalized.patches,
+        notes: Array.isArray(o.notes)
+          ? o.notes.filter((n): n is string => typeof n === "string")
           : topLevelMessage
             ? [topLevelMessage]
             : [],
@@ -467,6 +486,20 @@ function chatInit(
     "Content-Type": "application/json",
   };
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+  try {
+    const endpoint = new URL(config.baseUrl);
+    if (
+      endpoint.port === "9655" &&
+      (endpoint.hostname === "127.0.0.1" || endpoint.hostname === "localhost")
+    ) {
+      // ForgetMeAI reuses a default agent session when this header is absent,
+      // which can leak recommendations from an earlier independent request.
+      // One id per chatInit keeps retries stable but isolates separate calls.
+      headers["x-agent-session"] = `ai-auditor-${randomUUID()}`;
+    }
+  } catch {
+    // URL validation and diagnostics happen elsewhere; keep request setup pure.
+  }
   return {
     method: "POST",
     headers,
@@ -484,7 +517,7 @@ export async function requestFix(
     {
       role: "system",
       content:
-        "You are an expert code-fixing agent specialized in security, performance, style, and maintainability issues. Return ONLY valid JSON matching FixResponse. Do not include markdown. Provide unified diffs only. When fixing security issues, ensure all inputs are validated and sanitized. When fixing performance issues, optimize without breaking functionality. When fixing an undefined reference (e.g. missing function, variable, import), you are expected to ADD the missing declaration in the affected file. If the provided file excerpt is truncated or shows only issue lines, rely on the issue message and line numbers to construct an accurate unified diff. When an issue has NO source file target (e.g. Lighthouse/custom audits, location.filePath is \"-\"), do NOT invent a file or diff — instead return concrete, actionable recommendations in the `notes` array and omit `patches` for those issues. Diff rules: emit exactly one file per patch; do NOT rename, delete, or mode-change files; include --- / +++ headers (a/ and b/ prefixes optional on the +++ side) and at least one @@ hunk; never use @@ -0,0 +1,N @@ to create a file that already has content; never return an empty or whitespace-only diff.",
+        "You are an expert code-fixing agent specialized in security, performance, style, and maintainability issues. Return ONLY valid JSON with exactly this shape: {\"patches\":[{\"description\":\"string\",\"unifiedDiff\":\"string\",\"touches\":[\"relative/file/path\"]}],\"notes\":[\"string\"]}. Never rename `description`, `unifiedDiff`, or `touches` to other field names. Do not include markdown. Provide unified diffs only. Treat the provided package.json metadata as the source of truth for the project's framework and tooling; never recommend framework-specific APIs, commands, or packages unless that framework is present in dependencies or devDependencies. When fixing security issues, ensure all inputs are validated and sanitized. When fixing performance issues, optimize without breaking functionality. When fixing an undefined reference (e.g. missing function, variable, import), you are expected to ADD the missing declaration in the affected file. If the provided file excerpt is truncated or shows only issue lines, rely on the issue message and line numbers to construct an accurate unified diff. When an issue has NO source file target (e.g. Lighthouse/custom audits, location.filePath is \"-\"), do NOT invent a file or diff — instead return concrete, actionable recommendations in the `notes` array and omit `patches` for those issues. Diff rules: emit exactly one file per patch; do NOT rename, delete, or mode-change files; include --- / +++ headers (a/ and b/ prefixes optional on the +++ side) and at least one @@ hunk; never use @@ -0,0 +1,N @@ to create a file that already has content; never return an empty or whitespace-only diff.",
     },
     { role: "user", content: JSON.stringify(req) },
   ];

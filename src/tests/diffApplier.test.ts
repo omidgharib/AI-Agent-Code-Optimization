@@ -1,10 +1,12 @@
 // FILE: tests/diffApplier.test.ts
 import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -73,6 +75,7 @@ describe("applyDiff", () => {
     expect(readFileSync(p, "utf8")).toBe(
       `const greeting = somethingElse();\nconsole.log(greeting);\n`,
     );
+    expect(existsSync(join(dir, ".ai-auditor-backup"))).toBe(false);
   });
 
   it("creates a new file when the hunk has no old lines and the file is absent", async () => {
@@ -167,6 +170,26 @@ diff --git a/src/b.js b/src/b.js
     const result = await applyDiff(diff, dir, false);
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/absolute diff target/);
+  });
+
+  it("refuses targets that escape through a directory symlink", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "diffapply-outside-"));
+    try {
+      writeFileSync(join(outside, "index.js"), "const value = 1;\n");
+      symlinkSync(outside, join(dir, "linked"), "junction");
+      const diff = `--- a/linked/index.js
++++ b/linked/index.js
+@@ -1,1 +1,1 @@
+-const value = 1;
++const value = 2;
+`;
+      const result = await applyDiff(diff, dir, false);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/symlink/);
+      expect(readFileSync(join(outside, "index.js"), "utf8")).toBe("const value = 1;\n");
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("refuses to modify generated and protected files", async () => {

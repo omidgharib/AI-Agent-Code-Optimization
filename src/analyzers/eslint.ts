@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import type { Category, Issue, Severity } from "../core/types";
+import { loadProjectIgnore } from "../core/projectIgnore";
 
 const EXCLUDES = [
   "**/node_modules/**",
@@ -166,6 +167,7 @@ export async function runEslint(cwd: string): Promise<Issue[]> {
   try {
     const absCwd = resolve(cwd);
     const hasConfig = CONFIG_FILES.some((f) => existsSync(join(absCwd, f)));
+    const projectIgnore = await loadProjectIgnore(absCwd);
 
     const eslint = new ESLint({
       cwd: absCwd,
@@ -173,7 +175,7 @@ export async function runEslint(cwd: string): Promise<Issue[]> {
       resolvePluginsRelativeTo: __dirname,
       errorOnUnmatchedPattern: false,
       overrideConfig: {
-        ignorePatterns: EXCLUDES,
+        ignorePatterns: [...EXCLUDES, ...projectIgnore.patterns],
         ...(hasConfig
           ? {}
           : {
@@ -248,9 +250,10 @@ export async function runEslintAutofix(
 ): Promise<Issue[]> {
   const absCwd = resolve(cwd);
   const hasConfig = CONFIG_FILES.some((f) => existsSync(join(absCwd, f)));
+  const projectIgnore = await loadProjectIgnore(absCwd);
 
   const overrideConfig = {
-    ignorePatterns: [...EXCLUDES, ...PROTECTED_IGNORES],
+    ignorePatterns: [...EXCLUDES, ...PROTECTED_IGNORES, ...projectIgnore.patterns],
     ...(hasConfig
       ? {}
       : {

@@ -1,22 +1,12 @@
 // FILE: src/fix/contextBuilder.ts
 import fs from "node:fs/promises";
 import type { PrioritizedIssue } from "../core/types";
-
-const SECRET_PATTERNS = [
-  /sk-[A-Za-z0-9]{20,}/g,
-  /ghp_[A-Za-z0-9]{36}/g,
-  /AKIA[A-Z0-9]{16}/g,
-  /-----BEGIN [A-Z ]+-----/g,
-];
+import path from "node:path";
+import { loadProjectIgnore } from "../core/projectIgnore";
+import { isSecretFile, redactSecrets } from "../core/trustSecurity";
 const MAX_CHARS = 60_000;
 const HEADER_LINES = 80;
 const CONTEXT_LINES = 60;
-
-function redact(text: string): string {
-  let out = text;
-  for (const p of SECRET_PATTERNS) out = out.replace(p, "<REDACTED>");
-  return out;
-}
 
 function addLineNumbers(lines: string[], startIdx: number): string {
   return lines.map((l, i) => `${startIdx + i + 1}: ${l}`).join("\n");
@@ -24,11 +14,14 @@ function addLineNumbers(lines: string[], startIdx: number): string {
 
 export async function buildContext(
   issues: PrioritizedIssue[],
+  repoRoot = process.cwd(),
 ): Promise<Array<{ filePath: string; excerpt: string }>> {
+  const projectIgnore = await loadProjectIgnore(repoRoot);
   const fileIssues = new Map<string, number[]>();
   for (const issue of issues) {
     if (!issue.location?.filePath) continue;
     const fp = issue.location.filePath;
+    if (projectIgnore.ignores(fp) || isSecretFile(fp)) continue;
     if (!fileIssues.has(fp)) fileIssues.set(fp, []);
     if (issue.location.startLine)
       fileIssues.get(fp)!.push(issue.location.startLine);
@@ -39,7 +32,8 @@ export async function buildContext(
 
   for (const [filePath, lines] of fileIssues) {
     try {
-      const content = await fs.readFile(filePath, "utf8");
+      const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(repoRoot, filePath);
+      const content = await fs.readFile(absolutePath, "utf8");
       const allLines = content.split("\n");
       const included = new Set<number>();
 
@@ -77,7 +71,7 @@ export async function buildContext(
           ),
         );
 
-      let excerpt = redact(parts.join("\n...\n"));
+      let excerpt = redactSecrets(parts.join("\n...\n"));
       if (totalChars + excerpt.length > MAX_CHARS) {
         const remaining = MAX_CHARS - totalChars;
         if (remaining <= 0) break;

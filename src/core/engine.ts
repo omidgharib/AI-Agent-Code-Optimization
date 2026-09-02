@@ -6,6 +6,11 @@ import { runEslint, runEslintAutofix } from "../analyzers/eslint";
 import { runTsc } from "../analyzers/tsc";
 import { runPlaywright } from "../analyzers/playwright";
 import { runLighthouse } from "../analyzers/lighthouse";
+import { runDependencyAudit, runProjectHealth } from "../analyzers/projectHealth";
+import { runSeoLab, type SeoHealth } from "../analyzers/seoLab";
+import { analyzeArchitecture, type ArchitectureReport } from "../analyzers/architecture";
+import { detectTests, importCoverage, testHealth } from "../verify/testIntelligence";
+import { metricsFromLighthouse, performanceScores } from "../analyzers/performanceLab";
 import { normalize } from "../normalize/normalizer";
 import { prioritize } from "../prioritize/prioritize";
 import { buildContext } from "../fix/contextBuilder";
@@ -17,6 +22,7 @@ import {
   MAX_ATTEMPTS,
 } from "../fix/llmClient";
 import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
+import { PatchTransaction } from "../fix/patchTransaction";
 import { writeReport } from "../report/report";
 import { logger } from "./logger";
 import { createFixTrace } from "./fixTrace";
@@ -29,13 +35,35 @@ import type {
   Issue,
   Severity,
 } from "./types";
+import { detectProject } from "./projectDetector";
+import { loadProjectIgnore } from "./projectIgnore";
+import { evaluateQualityGate } from "./qualityGate";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 
 interface AnalyzeResult {
   issues: Issue[];
   lighthouse?: LighthouseReport;
+  lighthouseDesktop?: LighthouseReport;
+  seoLab?: SeoHealth;
+  architecture?: ArchitectureReport;
 }
 
 const SEVERITY_ORDER = ["low", "medium", "high", "critical"];
+const execFileAsync = promisify(execFile);
+
+async function getChangedFiles(repoRoot: string): Promise<Set<string>> {
+  try {
+    const [tracked, untracked] = await Promise.all([
+      execFileAsync("git", ["diff", "--name-only", "HEAD"], { cwd: repoRoot }),
+      execFileAsync("git", ["ls-files", "--others", "--exclude-standard"], { cwd: repoRoot }),
+    ]);
+    return new Set(`${tracked.stdout}\n${untracked.stdout}`.split(/\r?\n/).map((file) => file.trim().replace(/\\/g, "/")).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
 
 function filterBySeverity(issues: Issue[], severity?: Severity): Issue[] {
   if (!severity) return issues;
@@ -47,14 +75,21 @@ async function analyze(
   cwd: string,
   url?: string,
   includeLighthouse = true,
+  extraExcludes: string[] = [],
 ): Promise<AnalyzeResult> {
   const tasks: Promise<Issue[]>[] = [
     runEslint(cwd),
     runTsc(cwd),
-    runPlaywright(cwd),
+    runPlaywright(cwd, url),
+    runProjectHealth(cwd),
+    runDependencyAudit(cwd),
   ];
 
   let lighthouse: LighthouseReport | undefined;
+  let lighthouseDesktop: LighthouseReport | undefined;
+  let seoLab: SeoHealth | undefined;
+  let architecture: ArchitectureReport | undefined;
+  tasks.push(analyzeArchitecture(cwd).then((result) => { architecture = result; return result.findings.map((finding) => ({ id: createHash("sha256").update(`architecture:${finding.ruleId}:${finding.files.join(",")}:${finding.message}`).digest("hex").slice(0, 16), tool: "custom" as const, ruleId: finding.ruleId, message: finding.message, severity: finding.severity, category: "maintainability" as const, location: { filePath: finding.files[0] ?? "-" }, evidence: { relatedFiles: finding.files }, fix: { canAutoFix: false, strategy: "advisory" as const }, meta: { confidence: finding.confidence } })); }).catch((error) => { logger.warn(`Architecture analysis skipped: ${String(error)}`); return []; }));
 
   if (url && includeLighthouse) {
     tasks.push(
@@ -66,30 +101,97 @@ async function analyze(
         .catch((e) => {
           logger.warn(`Lighthouse skipped: ${String(e)}`);
           return [];
-        }),
+      }),
+    );
+    tasks.push(
+      runSeoLab(url)
+        .then((result) => { seoLab = result.health; return result.issues; })
+        .catch((error) => { logger.warn(`SEO Lab skipped: ${String(error)}`); return []; }),
+    );
+    tasks.push(
+      runLighthouse(url, "desktop")
+        .then((res) => { lighthouseDesktop = res.lhr; return res.issues.map((issue) => ({ ...issue, id: `${issue.id.slice(0, 15)}d`, meta: { ...issue.meta, lighthouseProfile: "desktop" } })); })
+        .catch((e) => { logger.warn(`Lighthouse desktop skipped: ${String(e)}`); return []; }),
     );
   }
 
   const results = await Promise.all(tasks);
-  return { issues: normalize(results.flat()), lighthouse };
+  const projectIgnore = await loadProjectIgnore(cwd, extraExcludes);
+  const issues = normalize(results.flat()).filter(
+    (item) => !item.location?.filePath || item.location.filePath === "-" || !projectIgnore.ignores(item.location.filePath),
+  );
+  return { issues, lighthouse, lighthouseDesktop, seoLab, architecture };
+}
+
+async function buildProjectMetadataContext(
+  repoRoot: string,
+): Promise<Array<{ filePath: string; excerpt: string }>> {
+  try {
+    const raw = await fs.readFile(path.join(repoRoot, "package.json"), "utf8");
+    const pkg = JSON.parse(raw) as Record<string, unknown>;
+    const metadata = {
+      name: pkg.name,
+      scripts: pkg.scripts,
+      dependencies: pkg.dependencies,
+      devDependencies: pkg.devDependencies,
+    };
+    return [{ filePath: "package.json", excerpt: JSON.stringify(metadata, null, 2).slice(0, 16_000) }];
+  } catch {
+    return [];
+  }
 }
 
 export async function runAudit(
   config: AuditConfig,
 ): Promise<{ exitCode: number }> {
-  const repoRoot = config.path;
+  let repoRoot = path.resolve(config.path);
   const outDir = `${repoRoot}/ai-auditor-report`;
   const reportTs = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const reportDir = path.join(outDir, reportTs);
   const allPatches: FixResponse["patches"] = [];
   const recommendations: string[] = [];
   const verificationErrors: string[] = [];
+  let mechanicalFixCount = 0;
   let trace: FixTracer | undefined;
+  let aiRequestCount = 0;
+  let estimatedTokens = 0;
+  let estimatedCostUsd = 0;
+  const agentStartedAt = Date.now();
+  const changedFiles = new Set<string>();
+  const costPerMillionTokens = Number(process.env.AI_AUDITOR_COST_PER_MILLION_TOKENS ?? 0);
+  const claimAiRequest = (estimatedChars = 0): void => {
+    if (aiRequestCount >= config.maxAiRequests)
+      throw new Error(`AI request budget exhausted (${config.maxAiRequests})`);
+    if (Date.now() - agentStartedAt > config.maxAgentSeconds * 1000)
+      throw new Error(`AI time budget exhausted (${config.maxAgentSeconds}s)`);
+    const nextTokens = Math.ceil(estimatedChars / 4);
+    if (estimatedTokens + nextTokens > config.maxAgentTokens)
+      throw new Error(`AI token budget exhausted (${config.maxAgentTokens} estimated input tokens)`);
+    const nextCost = costPerMillionTokens > 0 ? (nextTokens / 1_000_000) * costPerMillionTokens : 0;
+    if (config.maxCostUsd > 0 && estimatedCostUsd + nextCost > config.maxCostUsd)
+      throw new Error(`AI cost budget exhausted ($${config.maxCostUsd})`);
+    aiRequestCount++;
+    estimatedTokens += nextTokens;
+    estimatedCostUsd += nextCost;
+  };
 
   try {
-    const initialAnalysis = await analyze(repoRoot, config.url);
+    const project = await detectProject(repoRoot);
+    repoRoot = project.root;
+    logger.info(
+      `Project: ${project.name} (${project.languages.join("+") || "JS/TS tooling"}, ${project.framework}, ${project.packageManager})`,
+    );
+    const initialAnalysis = await analyze(repoRoot, config.url, true, config.exclude);
     let issues = filterBySeverity(initialAnalysis.issues, config.severity);
+    if (config.changedOnly) {
+      const changed = await getChangedFiles(repoRoot);
+      issues = issues.filter((issue) => issue.location?.filePath === "-" || (issue.location?.filePath && changed.has(issue.location.filePath)));
+      logger.info(`Incremental mode: ${changed.size} changed file(s), ${issues.length} matching issue(s)`);
+    }
     const lighthouse = initialAnalysis.lighthouse;
+    const lighthouseDesktop = initialAnalysis.lighthouseDesktop;
+    const seoLab = initialAnalysis.seoLab;
+    const architecture = initialAnalysis.architecture;
 
     let prioritized = prioritize(issues);
     logger.info(`Found ${prioritized.length} issues`);
@@ -137,6 +239,7 @@ export async function runAudit(
           const autofixed = await runEslintAutofix(repoRoot, {
             dryRun: config.dryRun,
           });
+          mechanicalFixCount = autofixed.length;
           for (const a of autofixed) mechanicallyFixedIds.add(a.id);
           if (autofixed.length > 0) {
             logger.success(
@@ -154,7 +257,7 @@ export async function runAudit(
         // If fixes were written, re-analyze so counts and the LLM pool reflect
         // the new file contents (autofixed issues are gone automatically).
         if (!config.dryRun && mechanicallyFixedIds.size > 0) {
-          const fresh = (await analyze(repoRoot, config.url, false)).issues;
+          const fresh = (await analyze(repoRoot, config.url, false, config.exclude)).issues;
           prioritized = prioritize(filterBySeverity(fresh, config.severity));
           logger.info(
             `Re-analyzed after mechanical pass: ${prioritized.length} issues`,
@@ -173,11 +276,16 @@ export async function runAudit(
       // Advisory pool is captured before the diff loop: re-analysis after
       // applied patches skips Lighthouse (no re-run), which would otherwise
       // silently drop every remaining URL-level finding.
-      const advisoryPool = selectAdvisoryIssues(prioritized);
+      const selectedIds = new Set(config.issueIds);
+      const withinUserScope = (issue: PrioritizedIssue) => selectedIds.size === 0 || selectedIds.has(issue.id);
+      if (selectedIds.size > 0) logger.info(`Agent scope: ${selectedIds.size} user-selected issue ID(s)`);
+      logger.info(`Agent controls: mode=${config.agentMode}, requests<=${config.maxAiRequests}, tokens<=${config.maxAgentTokens}, seconds<=${config.maxAgentSeconds}, files<=${config.maxChangedFiles}`);
+      const advisoryPool = selectAdvisoryIssues(prioritized.filter(withinUserScope));
+      const projectMetadataContext = await buildProjectMetadataContext(repoRoot);
 
       let traceIteration = 0;
       for (let iter = 0; iter < config.maxFixIterations; iter++) {
-        const planned = selectIssuesForFix(prioritized, config.fixBatch);
+        const planned = selectIssuesForFix(prioritized.filter(withinUserScope), config.fixBatch);
         const selected = planned
           .flatMap((p) => p.issues)
           .filter((i) => !mechanicallyFixedIds.has(i.id));
@@ -199,12 +307,25 @@ export async function runAudit(
         logger.info(
           `Fix iteration ${iter + 1}: ${selected.length} issues selected`,
         );
-        const context = await buildContext(selected);
+        const transaction = new PatchTransaction(repoRoot, config.dryRun);
+        const iterationPatchStart = allPatches.length;
+        const previousFileIssues = prioritized.filter(
+          (issue) => issue.location?.filePath && issue.location.filePath !== "-",
+        );
+        const context = [
+          ...projectMetadataContext,
+          ...(await buildContext(selected, repoRoot)),
+        ];
 
         trace.logIterationStart(++traceIteration, selected, context);
 
         let fixResponse: FixResponse;
+        const aiRequestStartedAt = Date.now();
         try {
+          claimAiRequest(JSON.stringify({ selected, context }).length);
+          logger.info(
+            `AI request -> ${config.provider}/${config.model} (diff fix iteration ${iter + 1})`,
+          );
           fixResponse = await requestFix(
             {
               baseUrl: config.baseUrl,
@@ -216,13 +337,16 @@ export async function runAudit(
               issues: selected,
               context,
               constraints: {
-                maxFilesChanged: 5,
+                maxFilesChanged: config.maxChangedFiles,
                 preferMinimalDiff: true,
                 doNotChangePublicAPI: false,
                 keepFormatting: true,
               },
             },
             trace,
+          );
+          logger.success(
+            `AI response <- ${config.provider}/${config.model} in ${((Date.now() - aiRequestStartedAt) / 1000).toFixed(1)}s (${fixResponse.patches.length} patches, ${fixResponse.notes.length} recommendations)`,
           );
         } catch (e) {
           logger.error(
@@ -271,11 +395,28 @@ export async function runAudit(
             recommendations.push(patch.description);
             continue;
           }
-          let result = await applyDiff(
-            patch.unifiedDiff,
-            repoRoot,
-            config.dryRun,
-          );
+          const targetPath = patch.touches[0] ?? getDiffTargetPath(patch.unifiedDiff);
+          if (targetPath && !changedFiles.has(targetPath) && changedFiles.size >= config.maxChangedFiles) {
+            logger.warn(`Skipped patch "${patch.description}": changed-file budget exhausted (${config.maxChangedFiles})`);
+            continue;
+          }
+          if (config.agentMode === "suggest") {
+            allPatches.push(patch);
+            if (targetPath) changedFiles.add(targetPath);
+            logger.info(`Suggested patch: ${patch.description}`);
+            continue;
+          }
+          let result: { success: boolean; error?: string };
+          try {
+            await transaction.capture(patch.unifiedDiff);
+            result = await applyDiff(
+              patch.unifiedDiff,
+              repoRoot,
+              config.dryRun,
+            );
+          } catch (error) {
+            result = { success: false, error: `Could not snapshot patch target: ${String(error)}` };
+          }
 
           // Apply-feedback repair: LLM diffs often carry slightly stale context
           // (a dropped comma, different spacing). Send the exact apply error and
@@ -301,6 +442,7 @@ export async function runAudit(
               }
             }
             try {
+              claimAiRequest(JSON.stringify({ selected, context, patch, contents }).length);
               const rep = await repairPatch(
                 {
                   baseUrl: config.baseUrl,
@@ -312,7 +454,7 @@ export async function runAudit(
                   issues: selected,
                   context,
                   constraints: {
-                    maxFilesChanged: 5,
+                    maxFilesChanged: config.maxChangedFiles,
                     preferMinimalDiff: true,
                     doNotChangePublicAPI: false,
                     keepFormatting: true,
@@ -324,6 +466,7 @@ export async function runAudit(
                 trace,
               );
               if (rep.patches.length === 0) break;
+              await transaction.capture(rep.patches[0].unifiedDiff);
               result = await applyDiff(
                 rep.patches[0].unifiedDiff,
                 repoRoot,
@@ -350,6 +493,7 @@ export async function runAudit(
 
           if (result.success) {
             allPatches.push(patch);
+            if (targetPath) changedFiles.add(targetPath);
             anyApplied = true;
             logger.success(`Applied: ${patch.description}`);
             const targetFile =
@@ -374,17 +518,52 @@ export async function runAudit(
 
         if (!anyApplied) break;
 
+        if (config.dryRun) {
+          logger.info("Dry run: patches validated without modifying source files");
+          break;
+        }
+
         // Re-analyze after applying patches.
         // Lighthouse is skipped on re-runs to avoid repeated
         // browser launches during the fix loop; it only runs once
         // on the initial pass.
-        const newIssues = (await analyze(repoRoot, config.url, false)).issues;
-        const newPrioritized = prioritize(newIssues);
-        if (newPrioritized.length >= prioritized.length) {
-          logger.info("No improvement detected, stopping fix loop");
+        try {
+          const newIssues = filterBySeverity(
+            (await analyze(repoRoot, config.url, false, config.exclude)).issues,
+            config.severity,
+          );
+          const newPrioritized = prioritize(newIssues);
+          const previousIds = new Set(previousFileIssues.map((issue) => issue.id));
+          const introducedSevere = newPrioritized.filter(
+            (issue) =>
+              !previousIds.has(issue.id) &&
+              (issue.severity === "high" || issue.severity === "critical"),
+          );
+          const improved =
+            newPrioritized.length < previousFileIssues.length &&
+            introducedSevere.length === 0;
+          if (!improved) {
+            await transaction.rollback();
+            allPatches.splice(iterationPatchStart);
+            const reason = introducedSevere.length > 0
+              ? `verification introduced ${introducedSevere.length} high/critical issue(s)`
+              : `verification did not reduce file issues (${previousFileIssues.length} -> ${newPrioritized.length})`;
+            verificationErrors.push(reason);
+            logger.warn(`Rolled back fix iteration: ${reason}`);
+            break;
+          }
+          logger.success(
+            `Verified fix iteration: file issues ${previousFileIssues.length} -> ${newPrioritized.length}`,
+          );
+          prioritized = newPrioritized;
+        } catch (error) {
+          await transaction.rollback();
+          allPatches.splice(iterationPatchStart);
+          const reason = `verification failed; iteration rolled back: ${String(error)}`;
+          verificationErrors.push(reason);
+          logger.error(reason);
           break;
         }
-        prioritized = newPrioritized;
       }
 
       // Advisory recommendations: Lighthouse/custom findings have no file
@@ -402,27 +581,35 @@ export async function runAudit(
             `Advisory batch ${batchNo}/${totalBatches}: ${batch.length} issues`,
           );
 
-          trace.logIterationStart(++traceIteration, batch, []);
+          trace.logIterationStart(++traceIteration, batch, projectMetadataContext);
           let fixResponse: FixResponse;
+          const aiRequestStartedAt = Date.now();
           try {
+            claimAiRequest(JSON.stringify({ batch, context: projectMetadataContext }).length);
+            logger.info(
+              `AI request -> ${config.provider}/${config.analysisModel} (advisory batch ${batchNo}/${totalBatches})`,
+            );
             fixResponse = await requestFix(
               {
                 baseUrl: config.baseUrl,
                 apiKey: config.apiKey,
-                model: config.model,
+                model: config.analysisModel,
               },
               {
                 repoRoot,
                 issues: batch,
-                context: [],
+                context: projectMetadataContext,
                 constraints: {
-                  maxFilesChanged: 5,
+                  maxFilesChanged: config.maxChangedFiles,
                   preferMinimalDiff: true,
                   doNotChangePublicAPI: false,
                   keepFormatting: true,
                 },
               },
               trace,
+            );
+            logger.success(
+              `AI response <- ${config.provider}/${config.model} in ${((Date.now() - aiRequestStartedAt) / 1000).toFixed(1)}s (${fixResponse.notes.length} recommendations)`,
             );
           } catch (e) {
             logger.error(
@@ -454,6 +641,14 @@ export async function runAudit(
     }
 
     const verificationPassed = verificationErrors.length === 0;
+    const qualityGate = await evaluateQualityGate(prioritized, lighthouse, {
+      baselinePath: config.baselinePath,
+      maxCritical: config.maxCritical,
+      maxHigh: config.maxHigh,
+      failOnNew: config.failOnNew,
+      minScores: config.minLighthouseScores,
+    });
+    logger.info(qualityGate.passed ? "Quality gate: PASS" : `Quality gate: FAIL (${qualityGate.reasons.join("; ")})`);
     if (trace) await trace.flush();
     await writeReport(
       prioritized,
@@ -463,16 +658,36 @@ export async function runAudit(
         json: config.json,
         md: config.md,
         html: config.html ?? false,
+        sarif: config.sarif,
         outDir,
         reportDir,
       },
       lighthouse,
       recommendations,
+      mechanicalFixCount,
+      config.dryRun,
+      config.fix ? {
+        mode: config.agentMode,
+        provider: config.provider,
+        model: config.model,
+        analysisModel: config.analysisModel,
+        requests: aiRequestCount,
+        estimatedTokens,
+        estimatedCostUsd,
+        durationMs: Date.now() - agentStartedAt,
+        changedFiles: changedFiles.size,
+      } : undefined,
+      qualityGate,
+      seoLab,
+      lighthouseDesktop,
+      architecture,
+      await (async () => { const sources = architecture?.nodes.filter((node) => node.kind === "production").map((node) => node.file) ?? []; const mapping = await detectTests(repoRoot, sources); const coverage = await importCoverage(repoRoot).catch(() => []); return testHealth(mapping, coverage); })(),
+      lighthouse ? performanceScores([metricsFromLighthouse(config.url ?? "/", "mobile", lighthouse), ...(lighthouseDesktop ? [metricsFromLighthouse(config.url ?? "/", "desktop", lighthouseDesktop)] : [])]) : undefined,
     );
 
     if (config.json || config.md) logger.info(`Report written to ${reportDir}`);
 
-    return { exitCode: prioritized.length > 0 ? 1 : 0 };
+    return { exitCode: qualityGate.passed ? (prioritized.length > 0 ? 1 : 0) : 3 };
   } catch (e) {
     logger.error(`Internal error: ${String(e)}`);
     if (e instanceof Error && e.stack) logger.trace(`Stack: ${e.stack}`);

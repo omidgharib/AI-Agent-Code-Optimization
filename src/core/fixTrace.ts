@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { FixRequest, FixResponse, PrioritizedIssue } from "./types";
+import { redactSecrets } from "./trustSecurity";
 
 interface TraceMeta {
   model: string;
@@ -57,19 +58,9 @@ interface TraceData {
   iterations: TraceIteration[];
 }
 
-const REDACT_PATTERNS = [
-  /sk-[A-Za-z0-9_-]{20,}/g,
-  /ghp_[A-Za-z0-9]{36}/g,
-  /AKIA[A-Z0-9]{16}/g,
-  /-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----/g,
-  /Bearer\s+[A-Za-z0-9._-]{20,}/g,
-];
-
 function redact(obj: unknown): unknown {
   if (typeof obj === "string") {
-    let out = obj;
-    for (const p of REDACT_PATTERNS) out = out.replace(p, "<REDACTED>");
-    return out;
+    return redactSecrets(obj);
   }
   if (Array.isArray(obj)) return obj.map(redact);
   if (obj && typeof obj === "object") {
@@ -162,8 +153,8 @@ export class FixTracer {
       .reverse()
       .find((r) => r.type === type);
     if (!last) return;
-    last.rawContent = rawContent;
-    last.response = parsed;
+    last.rawContent = redact(rawContent) as string;
+    last.response = redact(parsed) as FixResponse;
     last.durationMs = durationMs;
   }
 
@@ -173,9 +164,9 @@ export class FixTracer {
       .reverse()
       .find((r) => r.type === type);
     if (!last) return;
-    last.error = error;
+    last.error = redact(error) as string;
     last.durationMs = durationMs;
-    if (rawContent) last.rawContent = rawContent;
+    if (rawContent) last.rawContent = redact(rawContent) as string;
   }
 
   logPatchApply(
@@ -189,7 +180,7 @@ export class FixTracer {
     this.currentIteration.patches.push({
       description,
       targetFile,
-      unifiedDiff,
+      unifiedDiff: redact(unifiedDiff) as string,
       success,
       error,
     });
@@ -206,7 +197,7 @@ export class FixTracer {
     this.currentIteration.repairs.push({
       description,
       applyError,
-      repairedDiff,
+      repairedDiff: redact(repairedDiff) as string | undefined,
       success,
       error,
     });
@@ -214,7 +205,7 @@ export class FixTracer {
 
   async flush(): Promise<void> {
     await fs.mkdir(path.dirname(this.outPath), { recursive: true });
-    await fs.writeFile(this.outPath, JSON.stringify(this.data, null, 2));
+    await fs.writeFile(this.outPath, JSON.stringify(redact(this.data), null, 2));
   }
 }
 

@@ -1,21 +1,6 @@
 // FILE: src/fix/diffApplier.ts
 import fs from "node:fs/promises";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const run = promisify(execFile);
-async function git(
-  args: string[],
-  cwd: string,
-): Promise<boolean> {
-  try {
-    await run("git", args, { cwd });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 interface Hunk {
   oldStart: number;
@@ -57,6 +42,31 @@ export function checkTargetPath(
   }
   if (GENERATED_DIR_RE.test(posix)) {
     return `refusing to modify generated/vendored file "${posix}"`;
+  }
+  return null;
+}
+
+async function checkRealTargetPath(filePath: string, repoRoot: string): Promise<string | null> {
+  const root = await fs.realpath(repoRoot);
+  const absolute = path.resolve(repoRoot, filePath);
+  let existing = absolute;
+  while (true) {
+    try { existing = await fs.realpath(existing); break; } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return `cannot resolve diff target "${filePath}": ${String(error)}`;
+      const parent = path.dirname(existing);
+      if (parent === existing) return `cannot resolve parent for diff target "${filePath}"`;
+      existing = parent;
+    }
+  }
+  const rel = path.relative(root, existing);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    return `refusing diff target "${filePath}" — its real path escapes the repo through a symlink`;
+  }
+  try {
+    const stat = await fs.lstat(absolute);
+    if (stat.isSymbolicLink()) return `refusing symbolic-link diff target "${filePath}"`;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return `cannot inspect diff target "${filePath}": ${String(error)}`;
   }
   return null;
 }
@@ -125,16 +135,6 @@ export function getDiffTargetPath(unifiedDiff: string): string | null {
   return null;
 }
 
-async function backupFile(filePath: string, backupDir: string): Promise<void> {
-  const dest = path.join(backupDir, filePath.replace(/[/\\:]/g, "_"));
-  await fs.mkdir(path.dirname(dest), { recursive: true });
-  await fs.copyFile(filePath, dest).catch(() => {});
-}
-
-async function isGitRepo(cwd: string): Promise<boolean> {
-  return git(["rev-parse", "--git-dir"], cwd);
-}
-
 export async function applyDiff(
   unifiedDiff: string,
   repoRoot: string,
@@ -168,10 +168,10 @@ export async function applyDiff(
 
   const pathError = checkTargetPath(filePath, repoRoot);
   if (pathError) return { success: false, error: pathError };
+  const realPathError = await checkRealTargetPath(filePath, repoRoot);
+  if (realPathError) return { success: false, error: realPathError };
 
   const absPath = path.resolve(repoRoot, filePath);
-  const backupDir = path.join(repoRoot, ".ai-auditor-backup");
-  const gitRepo = await isGitRepo(repoRoot);
 
   let content: string;
   try {
@@ -203,8 +203,6 @@ export async function applyDiff(
     };
   }
 
-  if (!gitRepo && !dryRun) await backupFile(absPath, backupDir);
-
   // Normalize the file's line endings to LF for matching, but write the result
   // back with the file's original style (CRLF stays CRLF on Windows).
   const crlf = body.includes("\r\n");
@@ -216,11 +214,6 @@ export async function applyDiff(
     // Negative or past-EOF starts must fail loudly; splice() with a negative
     // index would silently insert lines at the wrong place.
     if (start < 0 || start > fileLines.length) {
-      if (gitRepo) await git(["checkout", "--", absPath], repoRoot);
-      else if (!dryRun) {
-        const backup = path.join(backupDir, filePath.replace(/[/\\:]/g, "_"));
-        await fs.copyFile(backup, absPath).catch(() => {});
-      }
       return {
         success: false,
         error: `Hunk mismatch at line ${hunk.oldStart}: hunk targets line ${start + 1} but the file only has ${fileLines.length} lines. The model's context lines may be stale — check ${filePath}`,
@@ -231,11 +224,6 @@ export async function applyDiff(
       .join("\n");
     const expected = hunk.oldLines.join("\n");
     if (actual !== expected) {
-      if (gitRepo) await git(["checkout", "--", absPath], repoRoot);
-      else if (!dryRun) {
-        const backup = path.join(backupDir, filePath.replace(/[/\\:]/g, "_"));
-        await fs.copyFile(backup, absPath).catch(() => {});
-      }
       return {
         success: false,
         error:

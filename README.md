@@ -4,6 +4,17 @@
 
 CLI tool for AI-powered code auditing and auto-fixing.
 
+## Local Web UI
+
+The project includes a bilingual React dashboard for auditing local JavaScript and TypeScript projects. After installing the root and `ui/` dependencies, run:
+
+```bash
+npm run build:all
+npm run web
+```
+
+Open `http://127.0.0.1:4317`. The server binds to loopback, accepts directories with a valid `package.json`, starts the auditor without a command shell, streams progress, and exposes the generated JSON report. See `docs/WEB_UI_ROADMAP.md` for the phased implementation plan.
+
 ## Requirements
 
 - Node.js >= 20

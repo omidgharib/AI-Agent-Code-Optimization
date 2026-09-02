@@ -11,6 +11,9 @@ import {
 } from "./summary";
 import { toMarkdown } from "./markdown";
 import { toHtml } from "./html";
+import { toSarif } from "./sarif";
+import type { SeoHealth } from "../analyzers/seoLab";
+import type { ArchitectureReport } from "../analyzers/architecture";
 
 async function extractFullPageScreenshot(
   lhr: LighthouseReport,
@@ -66,9 +69,18 @@ export async function writeReport(
   issues: PrioritizedIssue[],
   patches: FixResponse["patches"],
   verification: { passed: boolean; errors: string[] },
-  config: { json: boolean; md: boolean; html: boolean; outDir: string; reportDir?: string },
+  config: { json: boolean; md: boolean; html: boolean; sarif?: boolean; outDir: string; reportDir?: string },
   lighthouse?: LighthouseReport,
   recommendations: string[] = [],
+  mechanicalFixes = 0,
+  dryRun = false,
+  agent?: ReportData["agent"],
+  qualityGate?: ReportData["qualityGate"],
+  seoLab?: SeoHealth,
+  lighthouseDesktop?: LighthouseReport,
+  architecture?: ArchitectureReport,
+  testHealth?: ReportData["testHealth"],
+  performanceLab?: ReportData["performanceLab"],
 ): Promise<void> {
   const outDir = config.reportDir ?? path.join(config.outDir, new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19));
   await fs.mkdir(outDir, { recursive: true });
@@ -82,10 +94,25 @@ export async function writeReport(
     patches: patches.map((p) => ({
       description: p.description,
       touches: p.touches,
+      unifiedDiff: p.unifiedDiff,
+      status: agent?.mode === "suggest" ? "suggested" : dryRun ? "preview" : "applied",
     })),
     recommendations,
+    fixSummary: {
+      mechanical: mechanicalFixes,
+      mechanicalMode: dryRun ? "dry-run" : "applied",
+      aiPatches: patches.length,
+      advisoryRecommendations: recommendations.length,
+    },
     verification,
+    ...(agent ? { agent } : {}),
+    ...(qualityGate ? { qualityGate } : {}),
     ...(lighthouse ? { lighthouse } : {}),
+    ...(seoLab ? { seoLab } : {}),
+    ...(lighthouseDesktop ? { lighthouseDesktop } : {}),
+    ...(architecture ? { architecture } : {}),
+    ...(testHealth ? { testHealth } : {}),
+    ...(performanceLab ? { performanceLab } : {}),
   };
 
   const jsonData: ReportData = lighthouse
@@ -102,4 +129,6 @@ export async function writeReport(
     await fs.writeFile(path.join(outDir, "report.md"), toMarkdown(data));
   if (config.html || neither)
     await fs.writeFile(path.join(outDir, "report.html"), toHtml(data));
+  if (config.sarif)
+    await fs.writeFile(path.join(outDir, "report.sarif"), JSON.stringify(toSarif(issues), null, 2));
 }

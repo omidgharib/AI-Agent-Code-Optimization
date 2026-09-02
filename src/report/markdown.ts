@@ -38,6 +38,43 @@ export function toMarkdown(data: ReportData): string {
   lines.push("### By Tool");
   for (const [k, v] of Object.entries(data.summary.byTool))
     lines.push(`- ${k}: ${v}`);
+  lines.push("### Fix flows");
+  lines.push(`- Mechanical (${data.fixSummary.mechanicalMode}): ${data.fixSummary.mechanical}`);
+  lines.push(`- AI patches accepted: ${data.fixSummary.aiPatches}`);
+  lines.push(`- Advisory recommendations: ${data.fixSummary.advisoryRecommendations}`);
+
+  if (data.lighthouse) {
+    const lhr = data.lighthouse;
+    lines.push("\n## Lighthouse details");
+    lines.push(`- Requested URL: ${mdEscape(lhr.requestedUrl ?? "-")}`);
+    lines.push(`- Final URL: ${mdEscape(lhr.finalDisplayedUrl ?? lhr.mainDocumentUrl ?? "-")}`);
+    lines.push(`- Version: ${mdEscape(lhr.lighthouseVersion ?? "-")}`);
+    lines.push(`- Fetch time: ${mdEscape(lhr.fetchTime ?? "-")}`);
+    lines.push("\n### Category scores");
+    lines.push("\n| Category | Title | Score |");
+    lines.push("|---|---|---:|");
+    for (const [id, category] of Object.entries(lhr.categories))
+      lines.push(`| ${mdEscape(id)} | ${mdEscape(category.title)} | ${category.score === null ? "n/a" : Math.round(category.score * 100)} |`);
+    lines.push("\n### All audits");
+    lines.push("\n| Audit | Score | Mode | Value | Description / evidence |");
+    lines.push("|---|---:|---|---|---|");
+    for (const [id, audit] of Object.entries(lhr.audits)) {
+      const details = audit.details;
+      const evidence = [
+        audit.description,
+        audit.warnings?.length ? `Warnings: ${audit.warnings.join("; ")}` : "",
+        audit.errorMessage ? `Error: ${audit.errorMessage}` : "",
+        details?.overallSavingsMs !== undefined ? `Savings: ${details.overallSavingsMs} ms` : "",
+        details?.overallSavingsBytes !== undefined ? `Savings: ${details.overallSavingsBytes} bytes` : "",
+        details?.items?.length ? `Detail rows: ${details.items.length}` : "",
+      ].filter(Boolean).join(" — ");
+      lines.push(`| ${mdEscape(id)} | ${audit.score === null ? "n/a" : Math.round(audit.score * 100)} | ${mdEscape(audit.scoreDisplayMode ?? "-")} | ${mdEscape(audit.displayValue ?? String(audit.numericValue ?? "-"))} | ${mdEscape(evidence || audit.title)} |`);
+    }
+    if (lhr.runWarnings?.length) {
+      lines.push("\n### Lighthouse warnings");
+      for (const warning of lhr.runWarnings) lines.push(`- ${mdEscape(warning)}`);
+    }
+  }
 
   const tools = data.tools ?? {};
   for (const tool of TOOL_ORDER) {

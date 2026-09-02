@@ -98,14 +98,34 @@ function buildIssues(url: string, audits: Record<string, LighthouseAudit>): Issu
       severity: mapSeverity(audit.score),
       category: mapCategory(auditId),
       location: { filePath: "-" },
-      fix: { canAutoFix: false },
+      evidence: {
+        url,
+        snippet: JSON.stringify({
+          auditId,
+          score: audit.score,
+          displayValue: audit.displayValue,
+          numericValue: audit.numericValue,
+          numericUnit: audit.numericUnit,
+          warnings: audit.warnings,
+          savingsMs: audit.details?.overallSavingsMs,
+          savingsBytes: audit.details?.overallSavingsBytes,
+        }).slice(0, 1200),
+      },
+      fix: { canAutoFix: false, strategy: "advisory" },
+      meta: {
+        reproducible: {
+          command: `lighthouse ${url} --only-audits=${auditId}`,
+          auditId,
+          score: audit.score,
+        },
+      },
     });
   }
 
   return issues;
 }
 
-export async function runLighthouse(url: string): Promise<LighthouseRunResult> {
+export async function runLighthouse(url: string, profile: "mobile" | "desktop" = "mobile"): Promise<LighthouseRunResult> {
   try {
     const chromeLauncher = await import("chrome-launcher");
     const lighthouse = (await import("lighthouse")).default;
@@ -119,6 +139,8 @@ export async function runLighthouse(url: string): Promise<LighthouseRunResult> {
         port: chrome.port,
         onlyCategories: LIGHTHOUSE_CATEGORIES,
         output: "json",
+        formFactor: profile,
+        ...(profile === "desktop" ? { screenEmulation: { mobile: false, width: 1350, height: 940, deviceScaleFactor: 1, disabled: false }, throttlingMethod: "simulate" as const } : {}),
       });
 
       if (!result?.lhr) return { issues: [] };
@@ -129,7 +151,7 @@ export async function runLighthouse(url: string): Promise<LighthouseRunResult> {
       const categoryScores = Object.entries(lhr.categories)
         .map(([id, c]) => `${id}=${c.score?.toFixed(2) ?? "n/a"}`)
         .join(", ");
-      logger.info(`Lighthouse: ${issues.length} issues (${categoryScores})`);
+      logger.info(`Lighthouse ${profile}: ${issues.length} issues (${categoryScores})`);
 
       return { issues, lhr };
     } finally {
@@ -145,6 +167,9 @@ export async function runLighthouse(url: string): Promise<LighthouseRunResult> {
           message: `Lighthouse failed: ${detail}`,
           severity: "medium",
           category: "maintainability",
+          evidence: { url, snippet: detail },
+          fix: { canAutoFix: false, strategy: "advisory" },
+          meta: { reproducible: { command: `lighthouse ${url}`, error: detail } },
         },
       ],
     };
