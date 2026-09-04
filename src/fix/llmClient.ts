@@ -336,12 +336,18 @@ export async function diagnoseEndpoint(
 
   const tcp = await tcpProbe(parsed, TCP_PROBE_TIMEOUT_MS);
   if (tcp) {
+    const localEndpoint = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" || parsed.hostname === "::1";
+    if (localEndpoint) {
+      return {
+        status: "fatal",
+        message: `endpoint "${hint}" is not listening at ${tcp}. Start the proxy/daemon (or fix --base-url / --provider) and re-run.`,
+      };
+    }
     return {
-      status: "fatal",
-      message: `endpoint "${hint}" is not listening at ${tcp}. Start the proxy/daemon (or fix --base-url / --provider) and re-run.`,
+      status: "warn",
+      message: `TCP preflight for remote endpoint "${hint}" did not complete (${tcp}). Trying the actual authenticated request...`,
     };
   }
-
   const chatUrl = buildChatUrl(baseUrl);
   const probeUrl = chatUrl.replace(/\/chat\/completions\/?$/, "/models");
   try {

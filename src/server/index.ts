@@ -66,7 +66,7 @@ const localDataRoot = platformDataRoot();
 mkdirSync(localDataRoot, { recursive: true });
 const localDatabase = new SqlitePersistence(path.join(localDataRoot, "local.db"));
 const persistentJobs = new PersistentJobRepository(localDatabase);
-const persistenceReady = migrate(localDatabase).then(async () => { await localDatabase.execute("INSERT OR IGNORE INTO tenants(id,name,created_at) VALUES(?,?,?)", ["local", "Local tenant", new Date().toISOString()]); await new DurableQueue(localDatabase, "local").recoverExpired(); const recovered = await persistentJobs.list("local"); for (const saved of recovered) { const snapshot = saved.configSnapshot; const job: AuditJob = { id: saved.id, projectPath: String(snapshot.projectPath ?? ""), url: typeof snapshot.url === "string" ? snapshot.url : undefined, provider: typeof snapshot.provider === "string" ? snapshot.provider : undefined, model: typeof snapshot.model === "string" ? snapshot.model : undefined, baseUrl: typeof snapshot.baseUrl === "string" ? snapshot.baseUrl : undefined, status: saved.status === "leased" || saved.status === "retry_wait" ? "queued" : saved.status as JobStatus, createdAt: saved.createdAt, completedAt: saved.completedAt, reportPath: typeof saved.checkpoint?.reportPath === "string" ? saved.checkpoint.reportPath : undefined, logs: [] }; jobs.set(job.id, job); if (job.status === "queued" && job.projectPath) setImmediate(() => void startJob(job, snapshot)); } });
+const persistenceReady = migrate(localDatabase).then(async () => { await localDatabase.execute("INSERT OR IGNORE INTO tenants(id,name,created_at) VALUES(?,?,?)", ["local", "Local tenant", new Date().toISOString()]); await new DurableQueue(localDatabase, "local").recoverExpired(); const recovered = await persistentJobs.list("local"); for (const saved of recovered) { const snapshot = saved.configSnapshot; const job: AuditJob = { id: saved.id, projectPath: String(snapshot.projectPath ?? ""), url: typeof snapshot.url === "string" ? snapshot.url : undefined, provider: typeof snapshot.provider === "string" ? snapshot.provider : undefined, model: typeof snapshot.model === "string" ? snapshot.model : undefined, baseUrl: typeof snapshot.baseUrl === "string" ? snapshot.baseUrl : undefined, status: saved.status === "leased" || saved.status === "retry_wait" ? "queued" : saved.status as JobStatus, createdAt: saved.createdAt, completedAt: saved.completedAt, reportPath: saved.status === "completed" && typeof saved.checkpoint?.reportPath === "string" ? saved.checkpoint.reportPath : undefined, logs: [] }; jobs.set(job.id, job); if (job.status === "queued" && job.projectPath) setImmediate(() => void startJob(job, snapshot)); } });
 const projectCatalog = new LocalProjectCatalog(new PersistentProjectRepository(localDatabase), "local", persistenceReady);
 const versionedRoutes = composeRoutes(
   createPlatformProjectRoutes(projectCatalog),
@@ -270,19 +270,21 @@ function addLog(job: AuditJob, source: "stdout" | "stderr", chunk: Buffer): void
   }
 }
 
-async function newestReport(projectPath: string): Promise<string | undefined> {
+async function newestReport(projectPath: string, createdAfterMs = 0): Promise<string | undefined> {
   const root = auditArtifactRoot(projectPath);
   try {
     const dirs = await fs.readdir(root, { withFileTypes: true });
     const candidates = dirs.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort().reverse();
     for (const dir of candidates) {
       const candidate = path.join(root, dir, "report.json");
-      try { await fs.access(candidate); return candidate; } catch { /* continue */ }
+      try {
+        const report = await fs.stat(candidate);
+        if (report.mtimeMs >= createdAfterMs) return candidate;
+      } catch { /* continue */ }
     }
   } catch { /* no report yet */ }
   return undefined;
 }
-
 async function startJob(job: AuditJob, options: Record<string, unknown>): Promise<void> {
   job.status = "running";
   job.startedAt = new Date().toISOString();
@@ -339,7 +341,7 @@ async function startJob(job: AuditJob, options: Record<string, unknown>): Promis
     job.exitCode = code ?? 2;
     job.status = job.status === "cancelled" ? "cancelled" : code === 2 ? "failed" : "completed";
     job.completedAt = new Date().toISOString();
-    job.reportPath = await newestReport(job.projectPath);
+    job.reportPath = job.status === "completed" ? await newestReport(job.projectPath, Date.parse(job.startedAt ?? job.createdAt)) : undefined;
     await persistentJobs.finish("local", job.id, job.status === "completed" ? "completed" : job.status === "cancelled" ? "cancelled" : "failed", { reportPath: job.reportPath, exitCode: job.exitCode, completedAt: job.completedAt });
     delete job.child;
     emit(job, "status", publicJob(job));
@@ -442,7 +444,7 @@ const server = http.createServer(async (req, res) => {
       const saved = accepted.job;
       const existing = jobs.get(saved.id);
       if (accepted.duplicate && existing) return json(res, 200, publicJob(existing));
-      const job: AuditJob = { id: saved.id, projectPath, url: auditUrl, ...selection, status: saved.status === "completed" || saved.status === "failed" || saved.status === "cancelled" ? saved.status : "queued", createdAt: saved.createdAt, completedAt: saved.completedAt, reportPath: typeof saved.checkpoint?.reportPath === "string" ? saved.checkpoint.reportPath : undefined, logs: [] };
+      const job: AuditJob = { id: saved.id, projectPath, url: auditUrl, ...selection, status: saved.status === "completed" || saved.status === "failed" || saved.status === "cancelled" ? saved.status : "queued", createdAt: saved.createdAt, completedAt: saved.completedAt, reportPath: saved.status === "completed" && typeof saved.checkpoint?.reportPath === "string" ? saved.checkpoint.reportPath : undefined, logs: [] };
       jobs.set(job.id, job);
       json(res, accepted.duplicate ? 200 : 202, publicJob(job));
       if (!accepted.duplicate) setImmediate(() => void startJob(job, input));
