@@ -1,0 +1,4 @@
+import type { Issue } from "../../core/types";
+const escape = (value: string) => value.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+export function githubAnnotations(issues: Issue[]): string[] { return issues.map((item) => `::${item.severity === "low" ? "warning" : "error"} file=${escape(item.location?.filePath ?? "-")},line=${item.location?.startLine ?? 1},title=${escape(item.ruleId ?? "unknown")}::${escape(item.message ?? item.ruleId ?? "finding")}`); }
+export function gitlabCodeQuality(issues: Issue[]) { return issues.map((item) => ({ description: item.message, check_name: item.ruleId, fingerprint: item.id, severity: item.severity === "critical" ? "blocker" : item.severity === "high" ? "critical" : item.severity === "medium" ? "major" : "minor", location: { path: item.location?.filePath ?? "-", lines: { begin: item.location?.startLine ?? 1 } } })); }

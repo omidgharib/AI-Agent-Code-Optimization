@@ -1,20 +1,29 @@
 // FILE: src/cli/index.ts
 import { Command } from "commander";
 import { buildConfig } from "../core/config";
-import { runAudit } from "../core/engine";
+import { RunCodeAudit } from "../code/application/runCodeAudit";
+import { legacyCodeAuditRunner } from "../code/infrastructure/legacyAuditAdapter";
 import { setDebug, setVerbose } from "../core/logger";
 import { listModels } from "../core/models";
 import type { AgentMode, Severity } from "../core/types";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { watch } from "node:fs";
+import { applyApprovedPatch, verifyCodeRun } from "../code/application/patchCommands";
 
 const program = new Command();
+const runCodeAudit = new RunCodeAudit(legacyCodeAuditRunner);
 
 program
   .name("ai-auditor")
   .description("AI-powered code auditing and auto-fix CLI")
   .version("1.0.0");
+
+const code = program.command("code").description("Production-grade deterministic code audit workflow");
+code.command("scan <path>").description("Read-only code analysis").option("--baseline <report.json>").option("--changed-only").option("--sarif").action(async (target, opts) => { const result = await runCodeAudit.execute(buildConfig({ path: target, json: true, md: true, html: true, sarif: opts.sarif ?? false, baselinePath: opts.baseline, changedOnly: opts.changedOnly ?? false, fix: false, dryRun: true, agentMode: "dry-run" })); process.exitCode = result.exitCode; });
+code.command("fix <path>").description("Generate proposals without mutating the repository").requiredOption("--preview", "Preview only").option("--provider <id>").option("--model <model>").option("--api-key <key>").action(async (target, opts) => { const result = await runCodeAudit.execute(buildConfig({ path: target, json: true, md: true, html: true, fix: true, dryRun: true, agentMode: "dry-run", provider: opts.provider, model: opts.model, apiKey: opts.apiKey })); process.exitCode = result.exitCode; });
+code.command("apply <run-id>").description("Apply one explicitly approved patch").requiredOption("--patch <id>").requiredOption("--actor <id>").requiredOption("--reason <text>").option("--path <path>", "Repository root", process.cwd()).action(async (runId, opts) => { console.log(JSON.stringify(await applyApprovedPatch(path.resolve(opts.path), runId, opts.patch, opts.actor, opts.reason), null, 2)); });
+code.command("verify <run-id>").description("Repeat verification for a run").option("--path <path>", "Repository root", process.cwd()).action(async (runId, opts) => { const result = await verifyCodeRun(path.resolve(opts.path), runId); console.log(JSON.stringify(result, null, 2)); process.exitCode = result.passed ? 0 : 3; });
 
 program
   .command("audit [path]")
@@ -79,6 +88,7 @@ program
     "URL to audit with Lighthouse (e.g. http://localhost:3000)",
   )
   .option("--html", "Write HTML report")
+  .option("--export <path>", "Explicitly copy generated report files to this directory")
   .action(async (auditPath: string | undefined, opts) => {
     if (opts.verbose) setVerbose(true);
     if (opts.debug) {
@@ -93,6 +103,7 @@ program
 
     const agentMode = (opts.agentMode ?? (opts.dryRun ? "dry-run" : "apply")) as AgentMode;
     if (!["suggest", "dry-run", "apply"].includes(agentMode)) throw new Error("Invalid --agent-mode; use suggest, dry-run or apply");
+    if (opts.url) console.warn("[deprecated] `audit --url` compatibility mode will be removed after this release; use the independent SEO Workspace/API for URL analysis.");
     const config = buildConfig({
       path: auditPath ?? process.cwd(),
       url: opts.url,
@@ -130,9 +141,10 @@ program
       changedOnly: opts.changedOnly ?? false,
       verbose: opts.verbose ?? false,
       html: opts.html ?? false,
+      exportPath: opts.export,
     });
 
-    const { exitCode } = await runAudit(config);
+    const { exitCode } = await runCodeAudit.execute(config);
     process.exit(exitCode);
   });
 
@@ -151,7 +163,7 @@ program
     const intervalMs = Math.max(1, Number(opts.interval)) * 60_000;
     const retention = Math.max(1, Number(opts.retention));
     const run = async () => {
-      const result = await runAudit(buildConfig({ path: projectPath, json: true, md: true, html: true, sarif: opts.sarif ?? false, maxCritical: Number(opts.maxCritical), maxHigh: Number(opts.maxHigh) }));
+      const result = await runCodeAudit.execute(buildConfig({ path: projectPath, json: true, md: true, html: true, sarif: opts.sarif ?? false, maxCritical: Number(opts.maxCritical), maxHigh: Number(opts.maxHigh) }));
       const reportRoot = path.join(projectPath, "ai-auditor-report");
       try {
         const dirs = (await fs.readdir(reportRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort().reverse();

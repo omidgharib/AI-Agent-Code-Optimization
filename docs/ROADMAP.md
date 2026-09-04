@@ -3,6 +3,8 @@
 This roadmap is the durable entry point for future implementation sessions.
 The product supports JavaScript and TypeScript projects only.
 
+For the production and enterprise architecture track, including the separation of Code Audit and SEO Workspace inside one product, use [AI Auditor Enterprise Roadmap](enterprise/ROADMAP.md).
+
 ## How to continue a phase
 
 1. Open this file and the matching file under `docs/phases/`.

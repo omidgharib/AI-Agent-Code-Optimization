@@ -81,6 +81,8 @@ export interface LighthouseReport {
 }
 
 export interface ReportData {
+  schemaVersion: 1;
+  generatedAt: string;
   summary: {
     total: number;
     bySeverity: Record<string, number>;

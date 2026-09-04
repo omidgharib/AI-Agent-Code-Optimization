@@ -6,6 +6,8 @@ beforeAll(async () => { server = http.createServer((req, res) => { const path = 
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
 describe("controlled SEO crawler", () => {
+  beforeAll(() => { process.env.AI_AUDITOR_ALLOW_PRIVATE_NETWORK = "true"; });
+  afterAll(() => { delete process.env.AI_AUDITOR_ALLOW_PRIVATE_NETWORK; });
   it("normalizes tracking parameters", () => expect(normalizeCrawlUrl("https://EXAMPLE.com/a/?utm_source=x&b=2#x")).toBe("https://example.com/a?b=2"));
   it("respects robots and detects site-wide issues within budgets", async () => { const result = await crawlSite(origin, { budget: { maxPages: 10, maxDepth: 3, concurrency: 2, delayMs: 0, maxDurationMs: 10_000, maxResponseBytes: 50_000 } }); expect(result.records.find((r) => r.url.endsWith("/blocked"))?.blockedByRobots).toBe(true); expect(result.issues.some((i) => i.ruleId === "duplicate-title")).toBe(true); expect(result.issues.some((i) => i.ruleId === "broken-url")).toBe(true); expect(crawlToCsv(result)).toContain('"url","status"'); });
   it("honors page and cancellation budgets", async () => { const limited = await crawlSite(origin, { budget: { maxPages: 1, maxDepth: 4, concurrency: 1, delayMs: 0, maxDurationMs: 10_000, maxResponseBytes: 50_000 } }); expect(limited.records).toHaveLength(1); expect(limited.status).toBe("budget-exhausted"); const controller = new AbortController(); controller.abort(); const cancelled = await crawlSite(origin, { signal: controller.signal }); expect(cancelled.status).toBe("cancelled"); });

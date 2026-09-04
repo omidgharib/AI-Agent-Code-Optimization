@@ -56,5 +56,6 @@ export function buildConfig(
     minLighthouseScores: opts.minLighthouseScores ?? {},
     sarif: opts.sarif ?? false,
     changedOnly: opts.changedOnly ?? false,
+    exportPath: opts.exportPath,
   };
 }

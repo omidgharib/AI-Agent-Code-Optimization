@@ -1,5 +1,7 @@
 # CLAUDE.md — ai-auditor Agent Instructions
 
+> **Legacy architecture guidance:** commands may remain useful, but architecture/type claims can be stale. The [Enterprise Roadmap](docs/enterprise/ROADMAP.md), [E00 baseline](docs/enterprise/phases/E00-PRODUCT-BOUNDARIES.md), ADRs, and current code are authoritative.
+
 ## Purpose
 
 ai-auditor is a TypeScript CLI for auditing source code and generating actionable findings.

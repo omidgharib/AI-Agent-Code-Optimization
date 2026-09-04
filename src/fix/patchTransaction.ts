@@ -1,11 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import crypto from "node:crypto";
 import { checkTargetPath, getDiffTargetPath } from "./diffApplier";
+import { atomicReplace, safeCreate, safeRead } from "../platform/security/safeMutation";
 
 interface Snapshot {
   absolutePath: string;
+  relativePath: string;
   content: Buffer | null;
   mode?: number;
+  sha256?: string;
 }
 
 export class PatchTransaction {
@@ -22,15 +26,24 @@ export class PatchTransaction {
     const absolutePath = path.resolve(this.repoRoot, target);
     if (this.snapshots.has(absolutePath)) return;
     try {
-      const stat = await fs.stat(absolutePath);
+      const source = await safeRead(this.repoRoot, target);
       this.snapshots.set(absolutePath, {
         absolutePath,
-        content: await fs.readFile(absolutePath),
-        mode: stat.mode,
+        relativePath: target,
+        content: source.bytes,
+        mode: source.mode,
+        sha256: source.sha256,
       });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      this.snapshots.set(absolutePath, { absolutePath, content: null });
+      this.snapshots.set(absolutePath, { absolutePath, relativePath: target, content: null });
+    }
+  }
+
+  async verifyUnchanged(): Promise<void> {
+    for (const snapshot of this.snapshots.values()) {
+      if (snapshot.content === null) { try { await safeRead(this.repoRoot, snapshot.relativePath); throw new Error(`TOCTOU detected: ${snapshot.absolutePath} was created after preview`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }
+      else { const current = await safeRead(this.repoRoot, snapshot.relativePath); if (current.sha256 !== snapshot.sha256) throw new Error(`TOCTOU detected: ${snapshot.absolutePath} changed after snapshot`); }
     }
   }
 
@@ -38,15 +51,11 @@ export class PatchTransaction {
     if (this.dryRun) return;
     for (const snapshot of [...this.snapshots.values()].reverse()) {
       if (snapshot.content === null) {
-        await fs.unlink(snapshot.absolutePath).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== "ENOENT") throw error;
-        });
+        try { const current = await safeRead(this.repoRoot, snapshot.relativePath); await fs.unlink(current.absolutePath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       } else {
-        await fs.mkdir(path.dirname(snapshot.absolutePath), { recursive: true });
-        await fs.writeFile(snapshot.absolutePath, snapshot.content);
-        if (snapshot.mode !== undefined) await fs.chmod(snapshot.absolutePath, snapshot.mode);
+        try { const current = await safeRead(this.repoRoot, snapshot.relativePath); await atomicReplace(this.repoRoot, snapshot.relativePath, snapshot.content, current.sha256); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; await safeCreate(this.repoRoot, snapshot.relativePath, snapshot.content); }
+        if (snapshot.mode !== undefined) await fs.chmod((await safeRead(this.repoRoot, snapshot.relativePath)).absolutePath, snapshot.mode);
       }
     }
   }
 }
-

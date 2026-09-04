@@ -4,6 +4,7 @@ import type { PrioritizedIssue } from "../core/types";
 import path from "node:path";
 import { loadProjectIgnore } from "../core/projectIgnore";
 import { isSecretFile, redactSecrets } from "../core/trustSecurity";
+import { resolveRepositoryPath } from "../platform/security/repositoryPolicy";
 const MAX_CHARS = 60_000;
 const HEADER_LINES = 80;
 const CONTEXT_LINES = 60;
@@ -32,7 +33,10 @@ export async function buildContext(
 
   for (const [filePath, lines] of fileIssues) {
     try {
-      const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(repoRoot, filePath);
+      if (path.isAbsolute(filePath)) continue;
+      const resolved = await resolveRepositoryPath(repoRoot, filePath);
+      if (resolved.fileClass !== "normal") continue;
+      const absolutePath = resolved.absolute;
       const content = await fs.readFile(absolutePath, "utf8");
       const allLines = content.split("\n");
       const included = new Set<number>();

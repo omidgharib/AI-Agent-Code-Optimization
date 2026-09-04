@@ -67,6 +67,7 @@ describe("Phase 2 analyzers", () => {
 
   it("renders Lighthouse categories and audit evidence in Markdown", () => {
     const data: ReportData = {
+      schemaVersion: 1, generatedAt: new Date(0).toISOString(),
       summary: { total: 0, bySeverity: {}, byCategory: {}, byTool: {} }, topIssues: [], tools: {}, patches: [], recommendations: [],
       fixSummary: { mechanical: 0, mechanicalMode: "dry-run", aiPatches: 0, advisoryRecommendations: 0 },
       verification: { passed: true, errors: [] },

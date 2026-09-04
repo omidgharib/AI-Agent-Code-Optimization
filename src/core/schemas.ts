@@ -1,5 +1,6 @@
 // FILE: src/core/schemas.ts
 import { z } from "zod";
+export { AuditCommandSchema, JobEventSchema, ProblemDetailsSchema, ProjectSchema } from "../contracts";
 
 export const SeveritySchema = z.enum(["low", "medium", "high", "critical"]);
 export const CategorySchema = z.enum([

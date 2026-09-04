@@ -1,6 +1,8 @@
 // FILE: src/fix/diffApplier.ts
 import fs from "node:fs/promises";
 import path from "node:path";
+import { classifyRepositoryPath } from "../platform/security/repositoryPolicy";
+import { atomicReplace, safeCreate } from "../platform/security/safeMutation";
 
 interface Hunk {
   oldStart: number;
@@ -37,6 +39,7 @@ export function checkTargetPath(
     return `refusing diff target "${filePath}" — it resolves outside the repo root`;
   }
   const posix = rel.split("\\").join("/");
+  try { if (classifyRepositoryPath(posix) !== "normal") return `refusing to modify protected file "${posix}"`; } catch (error) { return error instanceof Error ? error.message : String(error); }
   if (PROTECTED_PATH_RE.test(posix)) {
     return `refusing to modify protected file "${posix}"`;
   }
@@ -179,11 +182,7 @@ export async function applyDiff(
   } catch {
     if (hunks.every((h) => h.oldCount === 0)) {
       if (!dryRun) {
-        await fs.mkdir(path.dirname(absPath), { recursive: true });
-        await fs.writeFile(
-          absPath,
-          hunks.flatMap((h) => h.newLines).join("\n"),
-        );
+        await safeCreate(repoRoot, filePath, hunks.flatMap((h) => h.newLines).join("\n"));
       }
       return { success: true };
     }
@@ -239,7 +238,8 @@ export async function applyDiff(
     let out = fileLines.join("\n");
     if (crlf) out = out.replace(/\n/g, "\r\n");
     if (hadBom) out = "\uFEFF" + out;
-    await fs.writeFile(absPath, out);
+    const originalHash = (await import("node:crypto")).createHash("sha256").update(content).digest("hex");
+    await atomicReplace(repoRoot, filePath, out, originalHash);
   }
   return { success: true };
 }

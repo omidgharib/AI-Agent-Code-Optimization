@@ -66,6 +66,7 @@ export interface FixResponse {
     description: string;
     unifiedDiff: string;
     touches: string[];
+    preApplySha256?: string;
   }>;
   notes: string[];
 }
@@ -108,4 +109,9 @@ export interface AuditConfig {
   minLighthouseScores: Record<string, number>;
   sarif: boolean;
   changedOnly: boolean;
+  exportPath?: string;
 }
+
+// Compatibility surface: new consumers should import domain-neutral contracts
+// from `src/contracts`; existing analyzer and CLI imports remain supported.
+export type { AuditCommand, JobEvent, ProblemDetails, Project } from "../contracts";

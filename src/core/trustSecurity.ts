@@ -3,6 +3,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { glob } from "glob";
 import { checkTargetPath, getDiffTargetPath } from "../fix/diffApplier";
+import { redactSensitive } from "../platform/security/secrets";
+import { atomicReplace, safeCreate, safeRead } from "../platform/security/safeMutation";
 
 const SECRET_FILE = /(^|\/)(\.env(?:\..*)?|\.npmrc|\.pypirc|credentials|secrets?\.(?:json|ya?ml)|id_(?:rsa|dsa|ecdsa|ed25519)|[^/]+\.(?:pem|key|p12|pfx|crt|cer))$/i;
 const SECRET_VALUES = [
@@ -22,7 +24,7 @@ export function isSecretFile(filePath: string): boolean {
 export function redactSecrets(value: string): string {
   let result = value;
   for (const pattern of SECRET_VALUES) result = result.replace(pattern, (_match, prefix?: string) => `${prefix ?? ""}<REDACTED>`);
-  return result;
+  return redactSensitive(result);
 }
 
 export function changedLineCount(diff: string): number {
@@ -73,19 +75,19 @@ export async function assessPatches(repoRoot: string, diffs: string[]): Promise<
 export async function createPersistentSnapshot(repoRoot: string, diffs: string[], snapshotRoot: string): Promise<string> {
   const id = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const dir = path.join(snapshotRoot, id); await fs.mkdir(dir, { recursive: true });
-  const manifest: Array<{ file: string; existed: boolean; mode?: number }> = [];
+  const manifest: Array<{ file: string; existed: boolean; mode?: number; sha256?: string }> = [];
   for (const file of [...new Set(diffs.map(getDiffTargetPath).filter((item): item is string => Boolean(item)))]) {
     const error = checkTargetPath(file, repoRoot); if (error) throw new Error(error);
     const absolute = path.resolve(repoRoot, file); const backup = path.join(dir, "files", file);
-    try { const stat = await fs.stat(absolute); await fs.mkdir(path.dirname(backup), { recursive: true }); await fs.copyFile(absolute, backup); manifest.push({ file, existed: true, mode: stat.mode }); }
+    try { const source = await safeRead(repoRoot, file); await fs.mkdir(path.dirname(backup), { recursive: true }); await fs.writeFile(backup, source.bytes, { flag: "wx" }); manifest.push({ file, existed: true, mode: source.mode, sha256: source.sha256 }); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; manifest.push({ file, existed: false }); }
   }
-  await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify({ id, createdAt: new Date().toISOString(), files: manifest }, null, 2)); return id;
+  await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify({ schemaVersion: 1, id, createdAt: new Date().toISOString(), files: manifest }, null, 2)); return id;
 }
 
 export async function restorePersistentSnapshot(repoRoot: string, snapshotRoot: string, id: string): Promise<number> {
   if (!/^[0-9]+-[a-f0-9]{8}$/.test(id)) throw new Error("Invalid snapshot ID");
-  const dir = path.join(snapshotRoot, id); const data = JSON.parse(await fs.readFile(path.join(dir, "manifest.json"), "utf8")) as { files: Array<{ file: string; existed: boolean; mode?: number }> };
-  for (const item of data.files) { const error = checkTargetPath(item.file, repoRoot); if (error) throw new Error(error); const target = path.resolve(repoRoot, item.file); if (!item.existed) await fs.unlink(target).catch((e: NodeJS.ErrnoException) => { if (e.code !== "ENOENT") throw e; }); else { await fs.mkdir(path.dirname(target), { recursive: true }); await fs.copyFile(path.join(dir, "files", item.file), target); if (item.mode) await fs.chmod(target, item.mode); } }
+  const dir = path.join(snapshotRoot, id); const data = JSON.parse(await fs.readFile(path.join(dir, "manifest.json"), "utf8")) as { files: Array<{ file: string; existed: boolean; mode?: number; sha256?: string }> };
+  for (const item of data.files) { const error = checkTargetPath(item.file, repoRoot); if (error) throw new Error(error); if (!item.existed) { try { const current = await safeRead(repoRoot, item.file); await fs.unlink(current.absolutePath); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; } } else { const backup = await fs.readFile(path.join(dir, "files", item.file)); const hash = crypto.createHash("sha256").update(backup).digest("hex"); if (!item.sha256 || hash !== item.sha256) throw new Error(`snapshot integrity failure for ${item.file}`); try { const current = await safeRead(repoRoot, item.file); await atomicReplace(repoRoot, item.file, backup, current.sha256); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; await safeCreate(repoRoot, item.file, backup); } const target = (await safeRead(repoRoot, item.file)).absolutePath; if (item.mode) await fs.chmod(target, item.mode); } }
   return data.files.length;
 }

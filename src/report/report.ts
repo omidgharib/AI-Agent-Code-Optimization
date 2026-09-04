@@ -88,6 +88,8 @@ export async function writeReport(
   if (lighthouse) await extractFullPageScreenshot(lighthouse, outDir);
 
   const data: ReportData = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
     summary: buildSummary(issues),
     topIssues: issues,
     tools: groupByTool(issues),
@@ -95,6 +97,7 @@ export async function writeReport(
       description: p.description,
       touches: p.touches,
       unifiedDiff: p.unifiedDiff,
+      preApplySha256: p.preApplySha256,
       status: agent?.mode === "suggest" ? "suggested" : dryRun ? "preview" : "applied",
     })),
     recommendations,

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Issue, Severity } from "../core/types";
+import { validateStructuredData } from "../seo/structuredData";
 
 export type SeoCategory = "metadata" | "indexability" | "structuredData" | "social" | "content";
 export interface SeoFinding { ruleId: string; category: SeoCategory; severity: Severity; message: string; selector?: string; evidence?: string }
@@ -49,10 +50,14 @@ async function fetchWithChain(url: string): Promise<{ status: number; html: stri
 
 export async function runSeoLab(url: string): Promise<{ issues: Issue[]; health: SeoHealth }> {
   const page = await fetchWithChain(url); const health = analyzeSeoHtml(page.html, page.finalUrl, page.status, page.redirects);
+  const visibleText = page.html.replace(/<script\b[\s\S]*?<\/script>/gi, " ").replace(/<style\b[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const structured = validateStructuredData(page.html, page.finalUrl, visibleText);
+  for (const finding of structured.findings) health.findings.push({ ruleId: finding.ruleId, category: "structuredData", severity: finding.severity, message: finding.message, selector: 'script[type="application/ld+json"], [itemscope], [typeof]', evidence: JSON.stringify({ entityId: finding.entityId, evidence: finding.evidence, richResultGuaranteed: false }) });
   const origin = new URL(page.finalUrl).origin; const robotsUrl = `${origin}/robots.txt`; const robotsResponse = await fetch(robotsUrl, { signal: AbortSignal.timeout(8_000) }).catch(() => undefined); const robotsText = robotsResponse ? await robotsResponse.text() : ""; const sitemap = /^sitemap:\s*(.+)$/im.exec(robotsText)?.[1]?.trim() ?? `${origin}/sitemap.xml`; const sitemapResponse = await fetch(sitemap, { signal: AbortSignal.timeout(8_000) }).catch(() => undefined);
   health.robots = { url: robotsUrl, status: robotsResponse?.status ?? 0, sitemap }; health.sitemap = { url: sitemap, status: sitemapResponse?.status ?? 0 };
   if (!robotsResponse?.ok) health.findings.push({ ruleId: "robots-txt", category: "indexability", severity: "medium", message: "robots.txt is unavailable", evidence: String(robotsResponse?.status ?? 0) });
   if (!sitemapResponse?.ok) health.findings.push({ ruleId: "sitemap", category: "indexability", severity: "medium", message: "XML sitemap is unavailable", evidence: String(sitemapResponse?.status ?? 0) });
+  health.deductions = { metadata: 0, indexability: 0, structuredData: 0, social: 0, content: 0 }; health.findings.forEach((finding) => health.deductions[finding.category] += weight[finding.severity]); health.score = Math.max(0, 100 - Object.values(health.deductions).reduce((a, b) => a + b, 0));
   const issues = health.findings.map((finding) => ({ id: createHash("sha256").update(`seo:${finding.ruleId}:${page.finalUrl}:${finding.message}`).digest("hex").slice(0, 16), tool: "custom" as const, ruleId: finding.ruleId, message: finding.message, severity: finding.severity, category: "seo" as const, location: { filePath: "-" }, evidence: { url: page.finalUrl, snippet: JSON.stringify({ category: finding.category, selector: finding.selector, evidence: finding.evidence }).slice(0, 1200) }, fix: { canAutoFix: false, hint: "Produce a framework-aware recommendation and require review before applying", strategy: "advisory" as const }, meta: { seoCategory: finding.category, selector: finding.selector } }));
   return { issues, health };
 }

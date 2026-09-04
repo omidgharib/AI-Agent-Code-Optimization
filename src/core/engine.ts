@@ -41,6 +41,8 @@ import { evaluateQualityGate } from "./qualityGate";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
+import { auditArtifactRoot } from "../platform/artifacts/paths";
+import { safeRead } from "../platform/security/safeMutation";
 
 interface AnalyzeResult {
   issues: Issue[];
@@ -52,6 +54,7 @@ interface AnalyzeResult {
 
 const SEVERITY_ORDER = ["low", "medium", "high", "critical"];
 const execFileAsync = promisify(execFile);
+async function bindPatchToPreview(repoRoot: string, patch: FixResponse["patches"][number]): Promise<void> { const target = getDiffTargetPath(patch.unifiedDiff); if (!target) return; try { patch.preApplySha256 = (await safeRead(repoRoot, target)).sha256; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") patch.preApplySha256 = "absent"; else throw error; } }
 
 async function getChangedFiles(repoRoot: string): Promise<Set<string>> {
   try {
@@ -145,7 +148,7 @@ export async function runAudit(
   config: AuditConfig,
 ): Promise<{ exitCode: number }> {
   let repoRoot = path.resolve(config.path);
-  const outDir = `${repoRoot}/ai-auditor-report`;
+  const outDir = auditArtifactRoot(repoRoot);
   const reportTs = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const reportDir = path.join(outDir, reportTs);
   const allPatches: FixResponse["patches"] = [];
@@ -410,6 +413,7 @@ export async function runAudit(
             continue;
           }
           if (config.agentMode === "suggest") {
+            await bindPatchToPreview(repoRoot, patch);
             allPatches.push(patch);
             if (targetPath) changedFiles.add(targetPath);
             logger.info(`Suggested patch: ${patch.description}`);
@@ -418,6 +422,7 @@ export async function runAudit(
           let result: { success: boolean; error?: string };
           try {
             await transaction.capture(patch.unifiedDiff);
+            await transaction.verifyUnchanged();
             result = await applyDiff(
               patch.unifiedDiff,
               repoRoot,
@@ -479,6 +484,7 @@ export async function runAudit(
               );
               if (rep.patches.length === 0) break;
               await transaction.capture(rep.patches[0].unifiedDiff);
+              await transaction.verifyUnchanged();
               result = await applyDiff(
                 rep.patches[0].unifiedDiff,
                 repoRoot,
@@ -504,6 +510,7 @@ export async function runAudit(
           }
 
           if (result.success) {
+            await bindPatchToPreview(repoRoot, patch);
             allPatches.push(patch);
             if (targetPath) changedFiles.add(targetPath);
             anyApplied = true;
@@ -699,6 +706,13 @@ export async function runAudit(
       await (async () => { const sources = architecture?.nodes.filter((node) => node.kind === "production").map((node) => node.file) ?? []; const mapping = await detectTests(repoRoot, sources); const coverage = await importCoverage(repoRoot).catch(() => []); return testHealth(mapping, coverage); })(),
       lighthouse ? performanceScores([metricsFromLighthouse(config.url ?? "/", "mobile", lighthouse), ...(lighthouseDesktop ? [metricsFromLighthouse(config.url ?? "/", "desktop", lighthouseDesktop)] : [])]) : undefined,
     );
+
+    if (config.exportPath) {
+      const exportDir = path.resolve(config.exportPath);
+      await fs.mkdir(exportDir, { recursive: true });
+      for (const entry of await fs.readdir(reportDir, { withFileTypes: true })) if (entry.isFile() && /^report\.(json|md|html|sarif)$/.test(entry.name)) await fs.copyFile(path.join(reportDir, entry.name), path.join(exportDir, entry.name));
+      logger.info(`Report explicitly exported to ${exportDir}`);
+    }
 
     if (config.json || config.md) logger.info(`Report written to ${reportDir}`);
 

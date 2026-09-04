@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Auditor Report</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+  header{background:linear-gradient(135deg,#1e293b,#0f172a);border-bottom:1px solid #1e293b;padding:24px 32px;display:flex;align-items:center;gap:16px}
+  header h1{font-size:1.5rem;font-weight:700;color:#f8fafc}
+  header .subtitle{color:#94a3b8;font-size:.875rem;margin-top:2px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600;color:#fff;text-transform:uppercase;letter-spacing:.05em}
+  .badge.lg{font-size:.875rem;padding:4px 12px}
+  .badge.tool{background:#1d4ed8}
+  .container{max-width:1400px;margin:0 auto;padding:24px 32px}
+  .stats{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  .stat-card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:12px;min-width:140px}
+  .stat-card .count{font-size:1.5rem;font-weight:700;color:#f8fafc}
+  .total-card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:8px}
+  .total-card .label{color:#94a3b8;font-size:.875rem}
+  .total-card .num{font-size:2rem;font-weight:800;color:#38bdf8}
+  .section{background:#1e293b;border:1px solid #334155;border-radius:10px;margin-bottom:20px;overflow:hidden}
+  .section-header{padding:14px 20px;background:#162032;border-bottom:1px solid #334155;font-weight:600;font-size:.9rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th{padding:10px 14px;text-align:left;color:#64748b;font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #334155;background:#162032}
+  td{padding:10px 14px;border-bottom:1px solid #1e293b;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#162032}
+  .num{color:#64748b;font-size:.8rem;width:36px}
+  .rule{font-family:'SF Mono',Consolas,monospace;font-size:.78rem;color:#7dd3fc;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .filepath{font-family:'SF Mono',Consolas,monospace;font-size:.78rem;max-width:300px}
+  .file{color:#a5b4fc}
+  .loc{color:#f472b6;font-weight:600}
+  .msg{color:#cbd5e1;max-width:400px;line-height:1.4}
+  .cat{display:inline-block;padding:1px 7px;border-radius:3px;font-size:.72rem;background:#0f172a;color:#94a3b8;border:1px solid #334155}
+  .fixable{color:#4ade80;font-weight:700}
+  .verification{padding:16px 20px;display:flex;align-items:center;gap:10px}
+  .pass{color:#4ade80;font-weight:600}
+  .fail{color:#f87171;font-weight:600}
+  code{background:#0f172a;padding:1px 5px;border-radius:3px;font-size:.8rem;color:#a5b4fc}
+  .empty{padding:24px;text-align:center;color:#475569}
+  .icon{font-size:1.4rem}
+  /* Lighthouse */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;padding:20px}
+  .kpi-card{background:#162032;border:1px solid #334155;border-radius:8px;padding:16px}
+  .kpi-title{color:#94a3b8;font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+  .kpi-score{font-size:2.1rem;font-weight:800}
+  .kpi-sub{color:#475569;font-size:.72rem;margin-top:2px}
+  .meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px 24px;padding:16px 20px}
+  .meta-item{display:flex;flex-direction:column;gap:2px;border-bottom:1px dashed #1e293b;padding-bottom:8px}
+  .meta-label{color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em}
+  .meta-value{color:#e2e8f0;font-size:.85rem;word-break:break-all;line-height:1.4}
+  .bar{background:#0f172a;border-radius:4px;height:10px;min-width:120px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:4px}
+  .status-good{color:#4ade80;font-weight:600}
+  .status-moderate{color:#eab308;font-weight:600}
+  .status-poor{color:#ef4444;font-weight:600}
+  .badge.score{min-width:52px;text-align:center}
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid #334155}
+  .filters{display:flex;flex-wrap:wrap;gap:8px}
+  .filter-btn{background:#0f172a;border:1px solid #334155;color:#94a3b8;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:.78rem}
+  .filter-btn.active{background:#1d4ed8;border-color:#2563eb;color:#fff}
+  .filter-btn .fcount{opacity:.7;font-size:.7rem}
+  .search{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:6px 12px;border-radius:6px;font-size:.8rem;width:240px}
+  .search::placeholder{color:#475569}
+  .audit-row{cursor:pointer}
+  .audit-row:hover td{background:#162032}
+  .audit-row.open td{background:#0f172a}
+  .toggle{color:#64748b;width:28px}
+  .atitle{color:#e2e8f0}
+  .disp{color:#94a3b8;margin-left:8px;font-size:.78rem}
+  .mode{font-size:.7rem;color:#475569;background:#0f172a;border:1px solid #334155;padding:1px 6px;border-radius:4px;white-space:nowrap}
+  .audit-detail{display:none}
+  .audit-detail td{background:#0f172a}
+  .adesc{color:#cbd5e1;font-size:.82rem;line-height:1.5;margin-bottom:8px;max-width:900px}
+  .awarn{margin:6px 0;font-size:.8rem;color:#facc15}
+  .awarn ul{margin:4px 0 0 18px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+  .chip{font-size:.75rem;padding:3px 10px;border-radius:999px;font-weight:600}
+  .chip-ms{background:#0f172a;color:#38bdf8;border:1px solid #0ea5e9}
+  .chip-bytes{background:#0f172a;color:#f472b6;border:1px solid #ec4899}
+  .items-table{width:100%;margin-top:8px;font-size:.78rem}
+  .items-table th{background:#162032}
+  .items-table td{word-break:break-all}
+  .dim{color:#475569}
+  .snippet{color:#f59e0b;font-family:'SF Mono',Consolas,monospace;font-size:.72rem;white-space:pre-wrap;margin-top:2px}
+  .mini{font-size:.72rem;color:#94a3b8;white-space:pre-wrap;word-break:break-all;background:#0f172a;padding:8px;border-radius:6px;margin-top:6px;max-height:180px;overflow:auto}
+  .stack{font-size:.72rem;color:#f87171;white-space:pre-wrap;background:#0f172a;padding:10px;border-radius:6px;margin-top:8px;overflow:auto}
+  .objdump{padding:4px 0}
+  .rec-list{padding:8px 20px}
+  .rec-item{padding:8px 0;color:#cbd5e1;font-size:.85rem;line-height:1.5;border-bottom:1px dashed #1e293b;white-space:pre-wrap;word-break:break-word}
+  .pair{display:flex;gap:10px;padding:3px 0;font-size:.8rem;border-bottom:1px dashed #1e293b}
+  .pair .k{color:#64748b;min-width:140px}
+  .sep{border:0;border-top:1px solid #334155;margin:8px 0}
+  .shots{display:flex;flex-direction:column;gap:16px;padding:16px 20px}
+  .shot-block figcaption{color:#94a3b8;font-size:.78rem;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em}
+  .shot{max-width:100%;border:1px solid #334155;border-radius:6px}
+  .shot.fullpage{width:100%;height:auto}
+  .filmstrip{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px}
+  .frame{border:1px solid #334155;border-radius:4px;height:90px;width:auto;flex-shrink:0}
+  .warn-list{padding:12px 20px 12px 40px;color:#facc15;font-size:.85rem;line-height:1.6}
+  .warn-list li{margin-bottom:4px}
+  .runtime-error{padding:14px 20px;color:#f87171;font-size:.85rem}
+  .err{color:#ef4444;font-weight:600;font-size:.85rem}
+  .shot-link{color:#38bdf8;font-size:.82rem}
+  .cwv-name{font-weight:700;color:#e2e8f0;margin-right:8px}
+  .cwv-full{color:#64748b;font-size:.75rem}
+</style>
+</head>
+<body>
+<header>
+  <span class="icon">🔍</span>
+  <div>
+    <h1>AI Auditor Report</h1>
+    <div class="subtitle">Generated 2026-09-03T05:48:15.725Z</div>
+  </div>
+</header>
+<div class="container">
+  <div class="stats">
+    <div class="total-card"><span class="label">Total Issues</span><span class="num">19</span></div>
+    <div class="stat-card"><span class="badge lg" style="background:#ea580c">high</span><span class="count">7</span></div><div class="stat-card"><span class="badge lg" style="background:#d97706">medium</span><span class="count">4</span></div><div class="stat-card"><span class="badge lg" style="background:#65a30d">low</span><span class="count">8</span></div>
+    <div class="stat-card"><span class="badge lg tool">custom</span><span class="count">8</span></div><div class="stat-card"><span class="badge lg tool">eslint</span><span class="count">7</span></div><div class="stat-card"><span class="badge lg tool">tsc</span><span class="count">4</span></div>
+  </div>
+  
+  <div class="section">
+    <div class="section-header">ESLint (7)</div>
+    <table>
+      <thead><tr><th>#</th><th>Severity</th><th>Category</th><th>Rule / Code</th><th>File:Line:Col</th><th>Line</th><th>Col</th><th>End</th><th>Fixable</th><th>Message</th><th>Snippet</th></tr></thead>
+      <tbody><tr>
+      <td class="num">1</td>
+      <td><span class="badge" style="background:#ea580c">high</span></td>
+      <td><span class="cat">security</span></td>
+      <td class="rule" title="no-eval">no-eval</td>
+      <td class="filepath"><span class="file">src/analytics.js</span><span class="loc">:9:1</span></td>
+      <td>9</td>
+      <td>1</td>
+      <td>9:5</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">eval can be harmful.</td>
+      <td><code class="snippet">eval(&quot;window.__legacyAnalytics = true&quot;);</code></td>
+    </tr>
+<tr>
+      <td class="num">2</td>
+      <td><span class="badge" style="background:#ea580c">high</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="@typescript-eslint/no-unused-vars">@typescript-eslint/no-unused-vars</td>
+      <td class="filepath"><span class="file">src/analytics.js</span><span class="loc">:3:7</span></td>
+      <td>3</td>
+      <td>7</td>
+      <td>3:26</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">'unusedTrackerOption' is assigned a value but never used.</td>
+      <td><code class="snippet">const unusedTrackerOption = &quot;debug&quot;;</code></td>
+    </tr>
+<tr>
+      <td class="num">3</td>
+      <td><span class="badge" style="background:#ea580c">high</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="no-debugger">no-debugger</td>
+      <td class="filepath"><span class="file">src/analytics.js</span><span class="loc">:10:1</span></td>
+      <td>10</td>
+      <td>1</td>
+      <td>10:10</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">Unexpected 'debugger' statement.</td>
+      <td><code class="snippet">debugger;</code></td>
+    </tr>
+<tr>
+      <td class="num">4</td>
+      <td><span class="badge" style="background:#d97706">medium</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="no-var">no-var</td>
+      <td class="filepath"><span class="file">src/analytics.js</span><span class="loc">:1:1</span></td>
+      <td>1</td>
+      <td>1</td>
+      <td>1:20</td>
+      <td><span class="fixable">✓</span></td>
+      <td class="msg">Unexpected var, use let or const instead.</td>
+      <td><code class="snippet">var visitCount = 0;</code></td>
+    </tr>
+<tr>
+      <td class="num">5</td>
+      <td><span class="badge" style="background:#d97706">medium</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="prefer-const">prefer-const</td>
+      <td class="filepath"><span class="file">src/analytics.js</span><span class="loc">:2:5</span></td>
+      <td>2</td>
+      <td>5</td>
+      <td>2:16</td>
+      <td><span class="fixable">✓</span></td>
+      <td class="msg">'trackerName' is never reassigned. Use 'const' instead.</td>
+      <td><code class="snippet">let trackerName = &quot;legacy-store-tracker&quot;;</code></td>
+    </tr>
+<tr>
+      <td class="num">6</td>
+      <td><span class="badge" style="background:#d97706">medium</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="eqeqeq">eqeqeq</td>
+      <td class="filepath"><span class="file">src/analytics.js</span><span class="loc">:5:16</span></td>
+      <td>5</td>
+      <td>16</td>
+      <td>5:18</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">Expected '===' and instead saw '=='.</td>
+      <td><code class="snippet">if (visitCount == &quot;0&quot;) {</code></td>
+    </tr>
+<tr>
+      <td class="num">7</td>
+      <td><span class="badge" style="background:#d97706">medium</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="no-console">no-console</td>
+      <td class="filepath"><span class="file">src/analytics.js</span><span class="loc">:6:3</span></td>
+      <td>6</td>
+      <td>3</td>
+      <td>6:14</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">Unexpected console statement.</td>
+      <td><code class="snippet">console.log(trackerName, &quot;started&quot;);</code></td>
+    </tr></tbody>
+    </table>
+  </div>
+<div class="section">
+    <div class="section-header">TypeScript (tsc) (4)</div>
+    <table>
+      <thead><tr><th>#</th><th>Severity</th><th>Category</th><th>Rule / Code</th><th>File:Line:Col</th><th>Line</th><th>Col</th><th>End</th><th>Fixable</th><th>Message</th><th>Snippet</th></tr></thead>
+      <tbody><tr>
+      <td class="num">1</td>
+      <td><span class="badge" style="background:#ea580c">high</span></td>
+      <td><span class="cat">bug</span></td>
+      <td class="rule" title="TS2322">TS2322</td>
+      <td class="filepath"><span class="file">src/main.ts</span><span class="loc">:16:7</span></td>
+      <td>16</td>
+      <td>7</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">Type '({ id: number; name: string; price: string; image: string; } | { id: number; name: string; price: number; image: string; })[]' is not assignable to type 'Product[]'.</td>
+      <td><code class="snippet">const products: Product[] = featuredProducts;</code></td>
+    </tr>
+<tr>
+      <td class="num">2</td>
+      <td><span class="badge" style="background:#ea580c">high</span></td>
+      <td><span class="cat">bug</span></td>
+      <td class="rule" title="TS2322">TS2322</td>
+      <td class="filepath"><span class="file">src/pricing.ts</span><span class="loc">:2:3</span></td>
+      <td>2</td>
+      <td>3</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">Type 'string' is not assignable to type 'number'.</td>
+      <td><code class="snippet">return `$${value.toFixed(2)}`;</code></td>
+    </tr>
+<tr>
+      <td class="num">3</td>
+      <td><span class="badge" style="background:#ea580c">high</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="TS6133">TS6133</td>
+      <td class="filepath"><span class="file">src/main.ts</span><span class="loc">:4:1</span></td>
+      <td>4</td>
+      <td>1</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">'unusedPromotion' is declared but its value is never read.</td>
+      <td><code class="snippet">import { unusedPromotion } from &quot;./unusedPromotion&quot;;</code></td>
+    </tr>
+<tr>
+      <td class="num">4</td>
+      <td><span class="badge" style="background:#ea580c">high</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="TS6133">TS6133</td>
+      <td class="filepath"><span class="file">src/main.ts</span><span class="loc">:17:7</span></td>
+      <td>17</td>
+      <td>7</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">'debugLabel' is declared but its value is never read.</td>
+      <td><code class="snippet">const debugLabel = &quot;catalog-ready&quot;;</code></td>
+    </tr></tbody>
+    </table>
+  </div>
+<div class="section">
+    <div class="section-header">Other Tools (8)</div>
+    <table>
+      <thead><tr><th>#</th><th>Severity</th><th>Category</th><th>Rule / Code</th><th>File:Line:Col</th><th>Line</th><th>Col</th><th>End</th><th>Fixable</th><th>Message</th><th>Snippet</th></tr></thead>
+      <tbody><tr>
+      <td class="num">1</td>
+      <td><span class="badge" style="background:#65a30d">low</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="outdated-audit-unavailable">outdated-audit-unavailable</td>
+      <td class="filepath"><span class="file">package.json</span></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">Registry version checks could not complete</td>
+      <td><code class="snippet">{&quot;registry&quot;:&quot;https://registry.npmjs.org&quot;,&quot;packagesChecked&quot;:4}</code></td>
+    </tr>
+<tr>
+      <td class="num">2</td>
+      <td><span class="badge" style="background:#65a30d">low</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="dependency-audit-unavailable">dependency-audit-unavailable</td>
+      <td class="filepath"><span class="file">package.json</span></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">Registry vulnerability audit could not complete</td>
+      <td><code class="snippet">{&quot;error&quot;:&quot;Error: ENOENT: no such file or directory, open 'C:\\Users\\omidg\\OneDrive\\Documents\\AI-Agent-Code-Optimization\\AI-Agent-Code-Optimization\\examples\\broken-storefront\\package-lock.json'&quot;,&quot;request&quot;:&quot;POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk&quot;}</code></td>
+    </tr>
+<tr>
+      <td class="num">3</td>
+      <td><span class="badge" style="background:#65a30d">low</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="unused-file">unused-file</td>
+      <td class="filepath"><span class="file">src/analytics.js</span></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">src/analytics.js has no known importers</td>
+      <td><span class="dim">–</span></td>
+    </tr>
+<tr>
+      <td class="num">4</td>
+      <td><span class="badge" style="background:#65a30d">low</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="possibly-unused-file">possibly-unused-file</td>
+      <td class="filepath"><span class="file">src/analytics.js</span></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">Source file is not referenced by another local module</td>
+      <td><code class="snippet">{&quot;file&quot;:&quot;src/analytics.js&quot;,&quot;method&quot;:&quot;static import graph&quot;}</code></td>
+    </tr>
+<tr>
+      <td class="num">5</td>
+      <td><span class="badge" style="background:#65a30d">low</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="possibly-unused-file">possibly-unused-file</td>
+      <td class="filepath"><span class="file">src/legacyCatalog.ts</span></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">Source file is not referenced by another local module</td>
+      <td><code class="snippet">{&quot;file&quot;:&quot;src/legacyCatalog.ts&quot;,&quot;method&quot;:&quot;static import graph&quot;}</code></td>
+    </tr>
+<tr>
+      <td class="num">6</td>
+      <td><span class="badge" style="background:#65a30d">low</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="unused-exports">unused-exports</td>
+      <td class="filepath"><span class="file">src/legacyCatalog.ts</span></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">1 export(s) in src/legacyCatalog.ts have no known consumers</td>
+      <td><span class="dim">–</span></td>
+    </tr>
+<tr>
+      <td class="num">7</td>
+      <td><span class="badge" style="background:#65a30d">low</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="unused-file">unused-file</td>
+      <td class="filepath"><span class="file">src/legacyCatalog.ts</span></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td><span class="dim">–</span></td>
+      <td class="msg">src/legacyCatalog.ts has no known importers</td>
+      <td><span class="dim">–</span></td>
+    </tr>
+<tr>
+      <td class="num">8</td>
+      <td><span class="badge" style="background:#65a30d">low</span></td>
+      <td><span class="cat">maintainability</span></td>
+      <td class="rule" title="unused-import">unused-import</td>
+      <td class="filepath"><span class="file">src/main.ts</span></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td><span class="fixable">✓</span></td>
+      <td class="msg">Imported binding 'unusedPromotion' is not used</td>
+      <td><code class="snippet">{&quot;import&quot;:&quot;import { unusedPromotion } from \&quot;./unusedPromotion\&quot;;&quot;,&quot;binding&quot;:&quot;unusedPromotion&quot;}</code></td>
+    </tr></tbody>
+    </table>
+  </div>
+  
+  
+  <div class="section">
+    <div class="section-header">Verification</div>
+    <div class="verification">
+      <span class="pass">✓ Passed</span>
+      
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var search = document.querySelector('.search');
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('.filter-btn'));
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.audit-row'));
+
+  function apply() {
+    var q = search ? search.value.trim().toLowerCase() : '';
+    var active = 'all';
+    for (var i = 0; i < buttons.length; i++) {
+      if (buttons[i].classList.contains('active')) {
+        active = buttons[i].getAttribute('data-bucket');
+        break;
+      }
+    }
+    rows.forEach(function (row) {
+      var bucketOk = active === 'all' || row.getAttribute('data-bucket') === active;
+      var searchOk = q === '' || (row.getAttribute('data-search') || '').indexOf(q) !== -1;
+      row.style.display = bucketOk && searchOk ? '' : 'none';
+    });
+    Array.prototype.slice.call(document.querySelectorAll('.audit-detail')).forEach(function (d) {
+      d.style.display = 'none';
+    });
+    Array.prototype.slice.call(document.querySelectorAll('.audit-row.open')).forEach(function (r) {
+      r.classList.remove('open');
+      r.querySelector('.toggle').textContent = '\u25B8';
+    });
+  }
+
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      buttons.forEach(function (x) { x.classList.remove('active'); });
+      b.classList.add('active');
+      apply();
+    });
+  });
+
+  if (search) search.addEventListener('input', apply);
+
+  document.addEventListener('click', function (e) {
+    var row = e.target.closest ? e.target.closest('.audit-row') : null;
+    if (!row) return;
+    var detail = row.nextElementSibling;
+    if (!detail || !detail.classList.contains('audit-detail')) return;
+    var isOpen = row.classList.contains('open');
+    Array.prototype.slice.call(document.querySelectorAll('.audit-row.open')).forEach(function (r) {
+      r.classList.remove('open');
+      var d = r.nextElementSibling;
+      if (d && d.classList.contains('audit-detail')) d.style.display = 'none';
+      r.querySelector('.toggle').textContent = '\u25B8';
+    });
+    if (!isOpen) {
+      row.classList.add('open');
+      row.querySelector('.toggle').textContent = '\u25BE';
+      detail.style.display = '';
+    }
+  });
+})();
+</script>
+</body>
+</html>

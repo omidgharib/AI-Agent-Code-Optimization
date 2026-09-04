@@ -1,10 +1,10 @@
 // src/analyzers/eslint.ts
 import { ESLint } from "eslint";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import type { Category, Issue, Severity } from "../core/types";
 import { loadProjectIgnore } from "../core/projectIgnore";
+import { atomicReplace, safeRead } from "../platform/security/safeMutation";
 
 const EXCLUDES = [
   "**/node_modules/**",
@@ -166,23 +166,19 @@ function snippetFor(
 export async function runEslint(cwd: string): Promise<Issue[]> {
   try {
     const absCwd = resolve(cwd);
-    const hasConfig = CONFIG_FILES.some((f) => existsSync(join(absCwd, f)));
     const projectIgnore = await loadProjectIgnore(absCwd);
 
     const eslint = new ESLint({
       cwd: absCwd,
-      useEslintrc: hasConfig,
+      useEslintrc: false,
+      ignore: true,
       resolvePluginsRelativeTo: __dirname,
       errorOnUnmatchedPattern: false,
       overrideConfig: {
         ignorePatterns: [...EXCLUDES, ...projectIgnore.patterns],
-        ...(hasConfig
-          ? {}
-          : {
-              parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-              env: { node: true, es2022: true, browser: true },
-              rules: DEFAULT_RULES,
-            }),
+        parserOptions: { ecmaVersion: "latest", sourceType: "module" },
+        env: { node: true, es2022: true, browser: true },
+        rules: DEFAULT_RULES,
       },
     } as ConstructorParameters<typeof ESLint>[0]);
 
@@ -249,22 +245,17 @@ export async function runEslintAutofix(
   opts: AutofixOptions = {},
 ): Promise<Issue[]> {
   const absCwd = resolve(cwd);
-  const hasConfig = CONFIG_FILES.some((f) => existsSync(join(absCwd, f)));
   const projectIgnore = await loadProjectIgnore(absCwd);
 
   const overrideConfig = {
     ignorePatterns: [...EXCLUDES, ...PROTECTED_IGNORES, ...projectIgnore.patterns],
-    ...(hasConfig
-      ? {}
-      : {
-          parserOptions: { ecmaVersion: "latest", sourceType: "module" },
-          env: { node: true, es2022: true, browser: true },
-          rules: DEFAULT_RULES,
-        }),
+    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
+    env: { node: true, es2022: true, browser: true },
+    rules: DEFAULT_RULES,
   };
   const baseOptions = {
     cwd: absCwd,
-    useEslintrc: hasConfig,
+    useEslintrc: false,
     resolvePluginsRelativeTo: __dirname,
     errorOnUnmatchedPattern: false,
     overrideConfig,
@@ -313,7 +304,12 @@ export async function runEslintAutofix(
   if (!opts.dryRun && issues.length > 0) {
     const fixer = new ESLint({ ...baseOptions, fix: true });
     const fixed = await fixer.lintFiles(["."]);
-    await ESLint.outputFixes(fixed);
+    for (const result of fixed) {
+      if (result.output === undefined) continue;
+      const relativePath = relativePosix(absCwd, result.filePath);
+      const before = await safeRead(absCwd, relativePath);
+      await atomicReplace(absCwd, relativePath, result.output, before.sha256);
+    }
   }
 
   return issues;
