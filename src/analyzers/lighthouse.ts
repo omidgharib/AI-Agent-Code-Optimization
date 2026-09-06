@@ -1,6 +1,21 @@
 // src/analyzers/lighthouse.ts
-import type { Issue } from "../core/types";
 import { createHash } from "node:crypto";
+import { logger } from "../core/logger";
+import type { Issue } from "../core/types";
+import type { LighthouseAudit, LighthouseReport } from "../report/summary";
+
+export interface LighthouseRunResult {
+  issues: Issue[];
+  lhr?: LighthouseReport;
+}
+
+const LIGHTHOUSE_CATEGORIES = [
+  "performance",
+  "accessibility",
+  "best-practices",
+  "seo",
+  "pwa",
+];
 
 function makeId(url: string, audit: string) {
   return createHash("sha256")
@@ -9,7 +24,14 @@ function makeId(url: string, audit: string) {
     .slice(0, 16);
 }
 
-function mapCategory(auditId: string): Issue["category"] {
+export function mapCategory(auditId: string): Issue["category"] {
+  const securityAudits = new Set([
+    "is-on-https",
+    "redirects-http",
+    "csp-xss",
+    "no-vulnerable-libraries",
+    "password-inputs-can-be-pasted-into",
+  ]);
   const seoAudits = new Set([
     "meta-description",
     "document-title",
@@ -40,6 +62,7 @@ function mapCategory(auditId: string): Issue["category"] {
     "cumulative-layout-shift",
     "first-contentful-paint",
   ]);
+  if (securityAudits.has(auditId)) return "security";
   if (seoAudits.has(auditId)) return "seo";
   if (perfAudits.has(auditId)) return "performance";
   return "maintainability";
@@ -52,7 +75,57 @@ function mapSeverity(score: number | null): Issue["severity"] {
   return "low";
 }
 
-export async function runLighthouse(url: string): Promise<Issue[]> {
+function buildIssues(url: string, audits: Record<string, LighthouseAudit>): Issue[] {
+  const issues: Issue[] = [];
+
+  for (const [auditId, audit] of Object.entries(audits)) {
+    if (
+      audit.score === 1 ||
+      (audit.score === null && audit.scoreDisplayMode === "notApplicable")
+    )
+      continue;
+    if (
+      audit.scoreDisplayMode === "informative" ||
+      audit.scoreDisplayMode === "manual"
+    )
+      continue;
+
+    issues.push({
+      id: makeId(url, auditId),
+      tool: "lighthouse",
+      ruleId: auditId,
+      message: `[${url}] ${audit.title}: ${audit.description ?? ""}`.trim(),
+      severity: mapSeverity(audit.score),
+      category: mapCategory(auditId),
+      location: { filePath: "-" },
+      evidence: {
+        url,
+        snippet: JSON.stringify({
+          auditId,
+          score: audit.score,
+          displayValue: audit.displayValue,
+          numericValue: audit.numericValue,
+          numericUnit: audit.numericUnit,
+          warnings: audit.warnings,
+          savingsMs: audit.details?.overallSavingsMs,
+          savingsBytes: audit.details?.overallSavingsBytes,
+        }).slice(0, 1200),
+      },
+      fix: { canAutoFix: false, strategy: "advisory" },
+      meta: {
+        reproducible: {
+          command: `lighthouse ${url} --only-audits=${auditId}`,
+          auditId,
+          score: audit.score,
+        },
+      },
+    });
+  }
+
+  return issues;
+}
+
+export async function runLighthouse(url: string, profile: "mobile" | "desktop" = "mobile"): Promise<LighthouseRunResult> {
   try {
     const chromeLauncher = await import("chrome-launcher");
     const lighthouse = (await import("lighthouse")).default;
@@ -61,54 +134,44 @@ export async function runLighthouse(url: string): Promise<Issue[]> {
       chromeFlags: ["--headless", "--no-sandbox"],
     });
 
-    const result = await lighthouse(url, {
-      port: chrome.port,
-      onlyCategories: ["performance", "seo", "best-practices", "accessibility"],
-      output: "json",
-    });
-
-    await chrome.kill();
-
-    if (!result?.lhr) return [];
-
-    const issues: Issue[] = [];
-    const audits = result.lhr.audits;
-
-    for (const [auditId, audit] of Object.entries(audits)) {
-      if (
-        audit.score === 1 ||
-        (audit.score === null && audit.scoreDisplayMode === "notApplicable")
-      )
-        continue;
-      if (
-        audit.scoreDisplayMode === "informative" ||
-        audit.scoreDisplayMode === "manual"
-      )
-        continue;
-
-      issues.push({
-        id: makeId(url, auditId),
-        tool: "lighthouse",
-        ruleId: auditId,
-        message: `[${url}] ${audit.title}: ${audit.description ?? ""}`.trim(),
-        severity: mapSeverity(audit.score),
-        category: mapCategory(auditId),
-        location: { filePath: "-" },
-        fix: { canAutoFix: false },
+    try {
+      const result = await lighthouse(url, {
+        port: chrome.port,
+        onlyCategories: LIGHTHOUSE_CATEGORIES,
+        output: "json",
+        formFactor: profile,
+        ...(profile === "desktop" ? { screenEmulation: { mobile: false, width: 1350, height: 940, deviceScaleFactor: 1, disabled: false }, throttlingMethod: "simulate" as const } : {}),
       });
-    }
 
-    return issues;
+      if (!result?.lhr) return { issues: [] };
+
+      const lhr = result.lhr as unknown as LighthouseReport;
+      const issues = buildIssues(url, lhr.audits);
+
+      const categoryScores = Object.entries(lhr.categories)
+        .map(([id, c]) => `${id}=${c.score?.toFixed(2) ?? "n/a"}`)
+        .join(", ");
+      logger.info(`Lighthouse ${profile}: ${issues.length} issues (${categoryScores})`);
+
+      return { issues, lhr };
+    } finally {
+      await chrome.kill();
+    }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    return [
-      {
-        id: makeId(url, "lighthouse-failure"),
-        tool: "custom",
-        message: `Lighthouse failed: ${detail}`,
-        severity: "medium",
-        category: "maintainability",
-      },
-    ];
+    return {
+      issues: [
+        {
+          id: makeId(url, "lighthouse-failure"),
+          tool: "custom",
+          message: `Lighthouse failed: ${detail}`,
+          severity: "medium",
+          category: "maintainability",
+          evidence: { url, snippet: detail },
+          fix: { canAutoFix: false, strategy: "advisory" },
+          meta: { reproducible: { command: `lighthouse ${url}`, error: detail } },
+        },
+      ],
+    };
   }
 }

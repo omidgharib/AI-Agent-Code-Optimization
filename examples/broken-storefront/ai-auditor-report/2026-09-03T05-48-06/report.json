@@ -1,0 +1,1398 @@
+{
+  "summary": {
+    "total": 19,
+    "bySeverity": {
+      "high": 7,
+      "medium": 4,
+      "low": 8
+    },
+    "byCategory": {
+      "security": 1,
+      "maintainability": 16,
+      "bug": 2
+    },
+    "byTool": {
+      "eslint": 7,
+      "tsc": 4,
+      "custom": 8
+    }
+  },
+  "topIssues": [
+    {
+      "id": "8c393f09dcab0d3d",
+      "tool": "eslint",
+      "ruleId": "no-eval",
+      "message": "eval can be harmful.",
+      "severity": "high",
+      "category": "security",
+      "location": {
+        "filePath": "src/analytics.js",
+        "startLine": 9,
+        "startColumn": 1,
+        "endLine": 9,
+        "endColumn": 5
+      },
+      "evidence": {
+        "snippet": "eval(\"window.__legacyAnalytics = true\");"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "eslintSeverity": 2,
+        "messageId": "unexpected",
+        "suggestions": 0,
+        "fixable": false
+      },
+      "score": 95,
+      "effort": "s",
+      "rationale": [
+        "severity=high(+60)",
+        "category=security(+30)",
+        "confidence=10",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "2c465c18ec6820c2",
+      "tool": "eslint",
+      "ruleId": "@typescript-eslint/no-unused-vars",
+      "message": "'unusedTrackerOption' is assigned a value but never used.",
+      "severity": "high",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/analytics.js",
+        "startLine": 3,
+        "startColumn": 7,
+        "endLine": 3,
+        "endColumn": 26
+      },
+      "evidence": {
+        "snippet": "const unusedTrackerOption = \"debug\";"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "eslintSeverity": 2,
+        "messageId": "unusedVar",
+        "suggestions": 0,
+        "fixable": false
+      },
+      "score": 75,
+      "effort": "s",
+      "rationale": [
+        "severity=high(+60)",
+        "category=maintainability(+10)",
+        "confidence=10",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "103989e268eed2d7",
+      "tool": "eslint",
+      "ruleId": "no-debugger",
+      "message": "Unexpected 'debugger' statement.",
+      "severity": "high",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/analytics.js",
+        "startLine": 10,
+        "startColumn": 1,
+        "endLine": 10,
+        "endColumn": 10
+      },
+      "evidence": {
+        "snippet": "debugger;"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "eslintSeverity": 2,
+        "messageId": "unexpected",
+        "suggestions": 0,
+        "fixable": false
+      },
+      "score": 75,
+      "effort": "s",
+      "rationale": [
+        "severity=high(+60)",
+        "category=maintainability(+10)",
+        "confidence=10",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "bfc0787daaa74493",
+      "tool": "tsc",
+      "ruleId": "TS2322",
+      "message": "Type '({ id: number; name: string; price: string; image: string; } | { id: number; name: string; price: number; image: string; })[]' is not assignable to type 'Product[]'.",
+      "severity": "high",
+      "category": "bug",
+      "location": {
+        "filePath": "src/main.ts",
+        "startLine": 16,
+        "startColumn": 7
+      },
+      "evidence": {
+        "snippet": "const products: Product[] = featuredProducts;"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "tscCode": "TS2322",
+        "hasLocation": true
+      },
+      "score": 75,
+      "effort": "m",
+      "rationale": [
+        "severity=high(+60)",
+        "category=bug(+20)",
+        "confidence=10",
+        "effort=m(-15)"
+      ]
+    },
+    {
+      "id": "17649d80d96065e9",
+      "tool": "tsc",
+      "ruleId": "TS2322",
+      "message": "Type 'string' is not assignable to type 'number'.",
+      "severity": "high",
+      "category": "bug",
+      "location": {
+        "filePath": "src/pricing.ts",
+        "startLine": 2,
+        "startColumn": 3
+      },
+      "evidence": {
+        "snippet": "return `$${value.toFixed(2)}`;"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "tscCode": "TS2322",
+        "hasLocation": true
+      },
+      "score": 75,
+      "effort": "m",
+      "rationale": [
+        "severity=high(+60)",
+        "category=bug(+20)",
+        "confidence=10",
+        "effort=m(-15)"
+      ]
+    },
+    {
+      "id": "d469ea3b29f07c8c",
+      "tool": "tsc",
+      "ruleId": "TS6133",
+      "message": "'unusedPromotion' is declared but its value is never read.",
+      "severity": "high",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/main.ts",
+        "startLine": 4,
+        "startColumn": 1
+      },
+      "evidence": {
+        "snippet": "import { unusedPromotion } from \"./unusedPromotion\";"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "tscCode": "TS6133",
+        "hasLocation": true
+      },
+      "score": 65,
+      "effort": "m",
+      "rationale": [
+        "severity=high(+60)",
+        "category=maintainability(+10)",
+        "confidence=10",
+        "effort=m(-15)"
+      ]
+    },
+    {
+      "id": "622955c770bb6113",
+      "tool": "tsc",
+      "ruleId": "TS6133",
+      "message": "'debugLabel' is declared but its value is never read.",
+      "severity": "high",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/main.ts",
+        "startLine": 17,
+        "startColumn": 7
+      },
+      "evidence": {
+        "snippet": "const debugLabel = \"catalog-ready\";"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "tscCode": "TS6133",
+        "hasLocation": true
+      },
+      "score": 65,
+      "effort": "m",
+      "rationale": [
+        "severity=high(+60)",
+        "category=maintainability(+10)",
+        "confidence=10",
+        "effort=m(-15)"
+      ]
+    },
+    {
+      "id": "3e2ef1511eb55d36",
+      "tool": "eslint",
+      "ruleId": "no-var",
+      "message": "Unexpected var, use let or const instead.",
+      "severity": "medium",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/analytics.js",
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 20
+      },
+      "evidence": {
+        "snippet": "var visitCount = 0;"
+      },
+      "fix": {
+        "canAutoFix": true
+      },
+      "meta": {
+        "eslintSeverity": 1,
+        "messageId": "unexpectedVar",
+        "suggestions": 0,
+        "fixable": true
+      },
+      "score": 50,
+      "effort": "xs",
+      "rationale": [
+        "severity=medium(+30)",
+        "category=maintainability(+10)",
+        "confidence=10",
+        "effort=xs(-0)"
+      ]
+    },
+    {
+      "id": "32a4c7238b034289",
+      "tool": "eslint",
+      "ruleId": "prefer-const",
+      "message": "'trackerName' is never reassigned. Use 'const' instead.",
+      "severity": "medium",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/analytics.js",
+        "startLine": 2,
+        "startColumn": 5,
+        "endLine": 2,
+        "endColumn": 16
+      },
+      "evidence": {
+        "snippet": "let trackerName = \"legacy-store-tracker\";"
+      },
+      "fix": {
+        "canAutoFix": true
+      },
+      "meta": {
+        "eslintSeverity": 1,
+        "messageId": "useConst",
+        "suggestions": 0,
+        "fixable": true
+      },
+      "score": 50,
+      "effort": "xs",
+      "rationale": [
+        "severity=medium(+30)",
+        "category=maintainability(+10)",
+        "confidence=10",
+        "effort=xs(-0)"
+      ]
+    },
+    {
+      "id": "e44fcc094f62644e",
+      "tool": "eslint",
+      "ruleId": "eqeqeq",
+      "message": "Expected '===' and instead saw '=='.",
+      "severity": "medium",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/analytics.js",
+        "startLine": 5,
+        "startColumn": 16,
+        "endLine": 5,
+        "endColumn": 18
+      },
+      "evidence": {
+        "snippet": "if (visitCount == \"0\") {"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "eslintSeverity": 1,
+        "messageId": "unexpected",
+        "suggestions": 0,
+        "fixable": false
+      },
+      "score": 45,
+      "effort": "s",
+      "rationale": [
+        "severity=medium(+30)",
+        "category=maintainability(+10)",
+        "confidence=10",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "f79510b7dc7ba9af",
+      "tool": "eslint",
+      "ruleId": "no-console",
+      "message": "Unexpected console statement.",
+      "severity": "medium",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/analytics.js",
+        "startLine": 6,
+        "startColumn": 3,
+        "endLine": 6,
+        "endColumn": 14
+      },
+      "evidence": {
+        "snippet": "console.log(trackerName, \"started\");"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "eslintSeverity": 1,
+        "messageId": "unexpected",
+        "suggestions": 1,
+        "fixable": false
+      },
+      "score": 45,
+      "effort": "s",
+      "rationale": [
+        "severity=medium(+30)",
+        "category=maintainability(+10)",
+        "confidence=10",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "8b4b822ef594eb71",
+      "tool": "custom",
+      "ruleId": "outdated-audit-unavailable",
+      "message": "Registry version checks could not complete",
+      "severity": "low",
+      "category": "maintainability",
+      "location": {
+        "filePath": "package.json"
+      },
+      "evidence": {
+        "snippet": "{\"registry\":\"https://registry.npmjs.org\",\"packagesChecked\":4}"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "reproducible": {
+          "registry": "https://registry.npmjs.org",
+          "packagesChecked": 4
+        }
+      },
+      "score": 20,
+      "effort": "s",
+      "rationale": [
+        "severity=low(+10)",
+        "category=maintainability(+10)",
+        "confidence=5",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "9e59c604b52ab6f1",
+      "tool": "custom",
+      "ruleId": "dependency-audit-unavailable",
+      "message": "Registry vulnerability audit could not complete",
+      "severity": "low",
+      "category": "maintainability",
+      "location": {
+        "filePath": "package.json"
+      },
+      "evidence": {
+        "snippet": "{\"error\":\"Error: ENOENT: no such file or directory, open 'C:\\\\Users\\\\omidg\\\\OneDrive\\\\Documents\\\\AI-Agent-Code-Optimization\\\\AI-Agent-Code-Optimization\\\\examples\\\\broken-storefront\\\\package-lock.json'\",\"request\":\"POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk\"}"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "reproducible": {
+          "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\omidg\\OneDrive\\Documents\\AI-Agent-Code-Optimization\\AI-Agent-Code-Optimization\\examples\\broken-storefront\\package-lock.json'",
+          "request": "POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk"
+        }
+      },
+      "score": 20,
+      "effort": "s",
+      "rationale": [
+        "severity=low(+10)",
+        "category=maintainability(+10)",
+        "confidence=5",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "82513310c30deaef",
+      "tool": "custom",
+      "ruleId": "unused-file",
+      "message": "src/analytics.js has no known importers",
+      "severity": "low",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/analytics.js"
+      },
+      "evidence": {
+        "relatedFiles": [
+          "src/analytics.js"
+        ]
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "confidence": "medium"
+      },
+      "score": 20,
+      "effort": "s",
+      "rationale": [
+        "severity=low(+10)",
+        "category=maintainability(+10)",
+        "confidence=5",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "fd4b858bbc4d97df",
+      "tool": "custom",
+      "ruleId": "possibly-unused-file",
+      "message": "Source file is not referenced by another local module",
+      "severity": "low",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/analytics.js"
+      },
+      "evidence": {
+        "snippet": "{\"file\":\"src/analytics.js\",\"method\":\"static import graph\"}"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "reproducible": {
+          "file": "src/analytics.js",
+          "method": "static import graph"
+        }
+      },
+      "score": 20,
+      "effort": "s",
+      "rationale": [
+        "severity=low(+10)",
+        "category=maintainability(+10)",
+        "confidence=5",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "648496535d6b5df3",
+      "tool": "custom",
+      "ruleId": "possibly-unused-file",
+      "message": "Source file is not referenced by another local module",
+      "severity": "low",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/legacyCatalog.ts"
+      },
+      "evidence": {
+        "snippet": "{\"file\":\"src/legacyCatalog.ts\",\"method\":\"static import graph\"}"
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "reproducible": {
+          "file": "src/legacyCatalog.ts",
+          "method": "static import graph"
+        }
+      },
+      "score": 20,
+      "effort": "s",
+      "rationale": [
+        "severity=low(+10)",
+        "category=maintainability(+10)",
+        "confidence=5",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "697d0f8f3a9564a0",
+      "tool": "custom",
+      "ruleId": "unused-exports",
+      "message": "1 export(s) in src/legacyCatalog.ts have no known consumers",
+      "severity": "low",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/legacyCatalog.ts"
+      },
+      "evidence": {
+        "relatedFiles": [
+          "src/legacyCatalog.ts"
+        ]
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "confidence": "low"
+      },
+      "score": 20,
+      "effort": "s",
+      "rationale": [
+        "severity=low(+10)",
+        "category=maintainability(+10)",
+        "confidence=5",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "db28c33e85712a3d",
+      "tool": "custom",
+      "ruleId": "unused-file",
+      "message": "src/legacyCatalog.ts has no known importers",
+      "severity": "low",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/legacyCatalog.ts"
+      },
+      "evidence": {
+        "relatedFiles": [
+          "src/legacyCatalog.ts"
+        ]
+      },
+      "fix": {
+        "canAutoFix": false
+      },
+      "meta": {
+        "confidence": "medium"
+      },
+      "score": 20,
+      "effort": "s",
+      "rationale": [
+        "severity=low(+10)",
+        "category=maintainability(+10)",
+        "confidence=5",
+        "effort=s(-5)"
+      ]
+    },
+    {
+      "id": "b5c8c9a755015994",
+      "tool": "custom",
+      "ruleId": "unused-import",
+      "message": "Imported binding 'unusedPromotion' is not used",
+      "severity": "low",
+      "category": "maintainability",
+      "location": {
+        "filePath": "src/main.ts"
+      },
+      "evidence": {
+        "snippet": "{\"import\":\"import { unusedPromotion } from \\\"./unusedPromotion\\\";\",\"binding\":\"unusedPromotion\"}"
+      },
+      "fix": {
+        "canAutoFix": true,
+        "hint": "Review unused-import evidence and apply a minimal source change"
+      },
+      "meta": {
+        "reproducible": {
+          "import": "import { unusedPromotion } from \"./unusedPromotion\";",
+          "binding": "unusedPromotion"
+        }
+      },
+      "score": 20,
+      "effort": "s",
+      "rationale": [
+        "severity=low(+10)",
+        "category=maintainability(+10)",
+        "confidence=5",
+        "effort=s(-5)"
+      ]
+    }
+  ],
+  "tools": {
+    "eslint": [
+      {
+        "id": "8c393f09dcab0d3d",
+        "tool": "eslint",
+        "ruleId": "no-eval",
+        "message": "eval can be harmful.",
+        "severity": "high",
+        "category": "security",
+        "location": {
+          "filePath": "src/analytics.js",
+          "startLine": 9,
+          "startColumn": 1,
+          "endLine": 9,
+          "endColumn": 5
+        },
+        "evidence": {
+          "snippet": "eval(\"window.__legacyAnalytics = true\");"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "eslintSeverity": 2,
+          "messageId": "unexpected",
+          "suggestions": 0,
+          "fixable": false
+        },
+        "score": 95,
+        "effort": "s",
+        "rationale": [
+          "severity=high(+60)",
+          "category=security(+30)",
+          "confidence=10",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "2c465c18ec6820c2",
+        "tool": "eslint",
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "message": "'unusedTrackerOption' is assigned a value but never used.",
+        "severity": "high",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/analytics.js",
+          "startLine": 3,
+          "startColumn": 7,
+          "endLine": 3,
+          "endColumn": 26
+        },
+        "evidence": {
+          "snippet": "const unusedTrackerOption = \"debug\";"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "eslintSeverity": 2,
+          "messageId": "unusedVar",
+          "suggestions": 0,
+          "fixable": false
+        },
+        "score": 75,
+        "effort": "s",
+        "rationale": [
+          "severity=high(+60)",
+          "category=maintainability(+10)",
+          "confidence=10",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "103989e268eed2d7",
+        "tool": "eslint",
+        "ruleId": "no-debugger",
+        "message": "Unexpected 'debugger' statement.",
+        "severity": "high",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/analytics.js",
+          "startLine": 10,
+          "startColumn": 1,
+          "endLine": 10,
+          "endColumn": 10
+        },
+        "evidence": {
+          "snippet": "debugger;"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "eslintSeverity": 2,
+          "messageId": "unexpected",
+          "suggestions": 0,
+          "fixable": false
+        },
+        "score": 75,
+        "effort": "s",
+        "rationale": [
+          "severity=high(+60)",
+          "category=maintainability(+10)",
+          "confidence=10",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "3e2ef1511eb55d36",
+        "tool": "eslint",
+        "ruleId": "no-var",
+        "message": "Unexpected var, use let or const instead.",
+        "severity": "medium",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/analytics.js",
+          "startLine": 1,
+          "startColumn": 1,
+          "endLine": 1,
+          "endColumn": 20
+        },
+        "evidence": {
+          "snippet": "var visitCount = 0;"
+        },
+        "fix": {
+          "canAutoFix": true
+        },
+        "meta": {
+          "eslintSeverity": 1,
+          "messageId": "unexpectedVar",
+          "suggestions": 0,
+          "fixable": true
+        },
+        "score": 50,
+        "effort": "xs",
+        "rationale": [
+          "severity=medium(+30)",
+          "category=maintainability(+10)",
+          "confidence=10",
+          "effort=xs(-0)"
+        ]
+      },
+      {
+        "id": "32a4c7238b034289",
+        "tool": "eslint",
+        "ruleId": "prefer-const",
+        "message": "'trackerName' is never reassigned. Use 'const' instead.",
+        "severity": "medium",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/analytics.js",
+          "startLine": 2,
+          "startColumn": 5,
+          "endLine": 2,
+          "endColumn": 16
+        },
+        "evidence": {
+          "snippet": "let trackerName = \"legacy-store-tracker\";"
+        },
+        "fix": {
+          "canAutoFix": true
+        },
+        "meta": {
+          "eslintSeverity": 1,
+          "messageId": "useConst",
+          "suggestions": 0,
+          "fixable": true
+        },
+        "score": 50,
+        "effort": "xs",
+        "rationale": [
+          "severity=medium(+30)",
+          "category=maintainability(+10)",
+          "confidence=10",
+          "effort=xs(-0)"
+        ]
+      },
+      {
+        "id": "e44fcc094f62644e",
+        "tool": "eslint",
+        "ruleId": "eqeqeq",
+        "message": "Expected '===' and instead saw '=='.",
+        "severity": "medium",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/analytics.js",
+          "startLine": 5,
+          "startColumn": 16,
+          "endLine": 5,
+          "endColumn": 18
+        },
+        "evidence": {
+          "snippet": "if (visitCount == \"0\") {"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "eslintSeverity": 1,
+          "messageId": "unexpected",
+          "suggestions": 0,
+          "fixable": false
+        },
+        "score": 45,
+        "effort": "s",
+        "rationale": [
+          "severity=medium(+30)",
+          "category=maintainability(+10)",
+          "confidence=10",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "f79510b7dc7ba9af",
+        "tool": "eslint",
+        "ruleId": "no-console",
+        "message": "Unexpected console statement.",
+        "severity": "medium",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/analytics.js",
+          "startLine": 6,
+          "startColumn": 3,
+          "endLine": 6,
+          "endColumn": 14
+        },
+        "evidence": {
+          "snippet": "console.log(trackerName, \"started\");"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "eslintSeverity": 1,
+          "messageId": "unexpected",
+          "suggestions": 1,
+          "fixable": false
+        },
+        "score": 45,
+        "effort": "s",
+        "rationale": [
+          "severity=medium(+30)",
+          "category=maintainability(+10)",
+          "confidence=10",
+          "effort=s(-5)"
+        ]
+      }
+    ],
+    "tsc": [
+      {
+        "id": "bfc0787daaa74493",
+        "tool": "tsc",
+        "ruleId": "TS2322",
+        "message": "Type '({ id: number; name: string; price: string; image: string; } | { id: number; name: string; price: number; image: string; })[]' is not assignable to type 'Product[]'.",
+        "severity": "high",
+        "category": "bug",
+        "location": {
+          "filePath": "src/main.ts",
+          "startLine": 16,
+          "startColumn": 7
+        },
+        "evidence": {
+          "snippet": "const products: Product[] = featuredProducts;"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "tscCode": "TS2322",
+          "hasLocation": true
+        },
+        "score": 75,
+        "effort": "m",
+        "rationale": [
+          "severity=high(+60)",
+          "category=bug(+20)",
+          "confidence=10",
+          "effort=m(-15)"
+        ]
+      },
+      {
+        "id": "17649d80d96065e9",
+        "tool": "tsc",
+        "ruleId": "TS2322",
+        "message": "Type 'string' is not assignable to type 'number'.",
+        "severity": "high",
+        "category": "bug",
+        "location": {
+          "filePath": "src/pricing.ts",
+          "startLine": 2,
+          "startColumn": 3
+        },
+        "evidence": {
+          "snippet": "return `$${value.toFixed(2)}`;"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "tscCode": "TS2322",
+          "hasLocation": true
+        },
+        "score": 75,
+        "effort": "m",
+        "rationale": [
+          "severity=high(+60)",
+          "category=bug(+20)",
+          "confidence=10",
+          "effort=m(-15)"
+        ]
+      },
+      {
+        "id": "d469ea3b29f07c8c",
+        "tool": "tsc",
+        "ruleId": "TS6133",
+        "message": "'unusedPromotion' is declared but its value is never read.",
+        "severity": "high",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/main.ts",
+          "startLine": 4,
+          "startColumn": 1
+        },
+        "evidence": {
+          "snippet": "import { unusedPromotion } from \"./unusedPromotion\";"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "tscCode": "TS6133",
+          "hasLocation": true
+        },
+        "score": 65,
+        "effort": "m",
+        "rationale": [
+          "severity=high(+60)",
+          "category=maintainability(+10)",
+          "confidence=10",
+          "effort=m(-15)"
+        ]
+      },
+      {
+        "id": "622955c770bb6113",
+        "tool": "tsc",
+        "ruleId": "TS6133",
+        "message": "'debugLabel' is declared but its value is never read.",
+        "severity": "high",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/main.ts",
+          "startLine": 17,
+          "startColumn": 7
+        },
+        "evidence": {
+          "snippet": "const debugLabel = \"catalog-ready\";"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "tscCode": "TS6133",
+          "hasLocation": true
+        },
+        "score": 65,
+        "effort": "m",
+        "rationale": [
+          "severity=high(+60)",
+          "category=maintainability(+10)",
+          "confidence=10",
+          "effort=m(-15)"
+        ]
+      }
+    ],
+    "custom": [
+      {
+        "id": "8b4b822ef594eb71",
+        "tool": "custom",
+        "ruleId": "outdated-audit-unavailable",
+        "message": "Registry version checks could not complete",
+        "severity": "low",
+        "category": "maintainability",
+        "location": {
+          "filePath": "package.json"
+        },
+        "evidence": {
+          "snippet": "{\"registry\":\"https://registry.npmjs.org\",\"packagesChecked\":4}"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "reproducible": {
+            "registry": "https://registry.npmjs.org",
+            "packagesChecked": 4
+          }
+        },
+        "score": 20,
+        "effort": "s",
+        "rationale": [
+          "severity=low(+10)",
+          "category=maintainability(+10)",
+          "confidence=5",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "9e59c604b52ab6f1",
+        "tool": "custom",
+        "ruleId": "dependency-audit-unavailable",
+        "message": "Registry vulnerability audit could not complete",
+        "severity": "low",
+        "category": "maintainability",
+        "location": {
+          "filePath": "package.json"
+        },
+        "evidence": {
+          "snippet": "{\"error\":\"Error: ENOENT: no such file or directory, open 'C:\\\\Users\\\\omidg\\\\OneDrive\\\\Documents\\\\AI-Agent-Code-Optimization\\\\AI-Agent-Code-Optimization\\\\examples\\\\broken-storefront\\\\package-lock.json'\",\"request\":\"POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk\"}"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "reproducible": {
+            "error": "Error: ENOENT: no such file or directory, open 'C:\\Users\\omidg\\OneDrive\\Documents\\AI-Agent-Code-Optimization\\AI-Agent-Code-Optimization\\examples\\broken-storefront\\package-lock.json'",
+            "request": "POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk"
+          }
+        },
+        "score": 20,
+        "effort": "s",
+        "rationale": [
+          "severity=low(+10)",
+          "category=maintainability(+10)",
+          "confidence=5",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "82513310c30deaef",
+        "tool": "custom",
+        "ruleId": "unused-file",
+        "message": "src/analytics.js has no known importers",
+        "severity": "low",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/analytics.js"
+        },
+        "evidence": {
+          "relatedFiles": [
+            "src/analytics.js"
+          ]
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "confidence": "medium"
+        },
+        "score": 20,
+        "effort": "s",
+        "rationale": [
+          "severity=low(+10)",
+          "category=maintainability(+10)",
+          "confidence=5",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "fd4b858bbc4d97df",
+        "tool": "custom",
+        "ruleId": "possibly-unused-file",
+        "message": "Source file is not referenced by another local module",
+        "severity": "low",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/analytics.js"
+        },
+        "evidence": {
+          "snippet": "{\"file\":\"src/analytics.js\",\"method\":\"static import graph\"}"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "reproducible": {
+            "file": "src/analytics.js",
+            "method": "static import graph"
+          }
+        },
+        "score": 20,
+        "effort": "s",
+        "rationale": [
+          "severity=low(+10)",
+          "category=maintainability(+10)",
+          "confidence=5",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "648496535d6b5df3",
+        "tool": "custom",
+        "ruleId": "possibly-unused-file",
+        "message": "Source file is not referenced by another local module",
+        "severity": "low",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/legacyCatalog.ts"
+        },
+        "evidence": {
+          "snippet": "{\"file\":\"src/legacyCatalog.ts\",\"method\":\"static import graph\"}"
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "reproducible": {
+            "file": "src/legacyCatalog.ts",
+            "method": "static import graph"
+          }
+        },
+        "score": 20,
+        "effort": "s",
+        "rationale": [
+          "severity=low(+10)",
+          "category=maintainability(+10)",
+          "confidence=5",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "697d0f8f3a9564a0",
+        "tool": "custom",
+        "ruleId": "unused-exports",
+        "message": "1 export(s) in src/legacyCatalog.ts have no known consumers",
+        "severity": "low",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/legacyCatalog.ts"
+        },
+        "evidence": {
+          "relatedFiles": [
+            "src/legacyCatalog.ts"
+          ]
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "confidence": "low"
+        },
+        "score": 20,
+        "effort": "s",
+        "rationale": [
+          "severity=low(+10)",
+          "category=maintainability(+10)",
+          "confidence=5",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "db28c33e85712a3d",
+        "tool": "custom",
+        "ruleId": "unused-file",
+        "message": "src/legacyCatalog.ts has no known importers",
+        "severity": "low",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/legacyCatalog.ts"
+        },
+        "evidence": {
+          "relatedFiles": [
+            "src/legacyCatalog.ts"
+          ]
+        },
+        "fix": {
+          "canAutoFix": false
+        },
+        "meta": {
+          "confidence": "medium"
+        },
+        "score": 20,
+        "effort": "s",
+        "rationale": [
+          "severity=low(+10)",
+          "category=maintainability(+10)",
+          "confidence=5",
+          "effort=s(-5)"
+        ]
+      },
+      {
+        "id": "b5c8c9a755015994",
+        "tool": "custom",
+        "ruleId": "unused-import",
+        "message": "Imported binding 'unusedPromotion' is not used",
+        "severity": "low",
+        "category": "maintainability",
+        "location": {
+          "filePath": "src/main.ts"
+        },
+        "evidence": {
+          "snippet": "{\"import\":\"import { unusedPromotion } from \\\"./unusedPromotion\\\";\",\"binding\":\"unusedPromotion\"}"
+        },
+        "fix": {
+          "canAutoFix": true,
+          "hint": "Review unused-import evidence and apply a minimal source change"
+        },
+        "meta": {
+          "reproducible": {
+            "import": "import { unusedPromotion } from \"./unusedPromotion\";",
+            "binding": "unusedPromotion"
+          }
+        },
+        "score": 20,
+        "effort": "s",
+        "rationale": [
+          "severity=low(+10)",
+          "category=maintainability(+10)",
+          "confidence=5",
+          "effort=s(-5)"
+        ]
+      }
+    ]
+  },
+  "patches": [],
+  "recommendations": [],
+  "fixSummary": {
+    "mechanical": 0,
+    "mechanicalMode": "applied",
+    "aiPatches": 0,
+    "advisoryRecommendations": 0
+  },
+  "verification": {
+    "passed": true,
+    "errors": []
+  },
+  "qualityGate": {
+    "passed": true,
+    "reasons": [],
+    "newIssueIds": [],
+    "resolvedIssueIds": [],
+    "thresholds": {
+      "maxCritical": 9007199254740991,
+      "maxHigh": 9007199254740991,
+      "failOnNew": false,
+      "minScores": {}
+    }
+  },
+  "architecture": {
+    "nodes": [
+      {
+        "file": "src/analytics.js",
+        "imports": [],
+        "exports": [],
+        "lines": 11,
+        "incoming": 0,
+        "outgoing": 0,
+        "kind": "production"
+      },
+      {
+        "file": "src/legacyCatalog.ts",
+        "imports": [],
+        "exports": [
+          "legacyCatalogLookup"
+        ],
+        "lines": 8,
+        "incoming": 0,
+        "outgoing": 0,
+        "kind": "production"
+      },
+      {
+        "file": "src/main.ts",
+        "imports": [
+          "src/pricing.ts",
+          "src/products.ts",
+          "src/unusedPromotion.ts"
+        ],
+        "exports": [],
+        "lines": 61,
+        "incoming": 0,
+        "outgoing": 3,
+        "kind": "production"
+      },
+      {
+        "file": "src/pricing.ts",
+        "imports": [],
+        "exports": [
+          "formatPrice",
+          "calculateDiscount"
+        ],
+        "lines": 9,
+        "incoming": 1,
+        "outgoing": 0,
+        "kind": "production"
+      },
+      {
+        "file": "src/products.ts",
+        "imports": [],
+        "exports": [
+          "default"
+        ],
+        "lines": 21,
+        "incoming": 1,
+        "outgoing": 0,
+        "kind": "production"
+      },
+      {
+        "file": "src/unusedPromotion.ts",
+        "imports": [],
+        "exports": [
+          "default"
+        ],
+        "lines": 6,
+        "incoming": 1,
+        "outgoing": 0,
+        "kind": "production"
+      }
+    ],
+    "cycles": [],
+    "findings": [
+      {
+        "ruleId": "unused-file",
+        "severity": "low",
+        "message": "src/analytics.js has no known importers",
+        "files": [
+          "src/analytics.js"
+        ],
+        "confidence": "medium"
+      },
+      {
+        "ruleId": "unused-file",
+        "severity": "low",
+        "message": "src/legacyCatalog.ts has no known importers",
+        "files": [
+          "src/legacyCatalog.ts"
+        ],
+        "confidence": "medium"
+      },
+      {
+        "ruleId": "unused-exports",
+        "severity": "low",
+        "message": "1 export(s) in src/legacyCatalog.ts have no known consumers",
+        "files": [
+          "src/legacyCatalog.ts"
+        ],
+        "confidence": "low"
+      }
+    ],
+    "debtScore": 94,
+    "debtFactors": {
+      "cycles": 0,
+      "oversized": 0,
+      "coupling": 0,
+      "unused": 6
+    }
+  },
+  "testHealth": {
+    "score": 60,
+    "testedSources": 0,
+    "totalSources": 6,
+    "gaps": []
+  }
+}

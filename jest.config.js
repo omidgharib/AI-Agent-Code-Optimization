@@ -1,7 +1,6 @@
-// FILE: jest.config.ts
-import type { Config } from "jest";
-
-const config: Config = {
+// FILE: jest.config.js
+/** @type {import("jest").Config} */
+const config = {
   preset: "ts-jest/presets/default-esm",
   testEnvironment: "node",
   extensionsToTreatAsEsm: [".ts"],
@@ -12,4 +11,4 @@ const config: Config = {
   testMatch: ["**/tests/**/*.test.ts"],
 };
 
-export default config;
+module.exports = config;

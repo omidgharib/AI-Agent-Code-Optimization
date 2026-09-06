@@ -1,0 +1,13 @@
+ai-auditor:
+  image: node:20
+  stage: test
+  script:
+    - npm ci
+    - npm run build
+    - node dist/cli/index.js audit . --changed-only --max-critical 0 --sarif --json
+  artifacts:
+    when: always
+    paths:
+      - ai-auditor-report/
+    reports:
+      sast: ai-auditor-report/*/report.sarif
