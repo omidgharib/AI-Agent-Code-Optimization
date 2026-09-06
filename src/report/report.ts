@@ -98,7 +98,8 @@ export async function writeReport(
       touches: p.touches,
       unifiedDiff: p.unifiedDiff,
       preApplySha256: p.preApplySha256,
-      status: agent?.mode === "suggest" ? "suggested" : dryRun ? "preview" : "applied",
+      preflight: p.preflight,
+      status: p.preflight?.status ?? (agent?.mode === "suggest" ? "suggested" : dryRun ? "preview" : "applied"),
     })),
     recommendations,
     fixSummary: {

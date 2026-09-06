@@ -91,7 +91,7 @@ export interface ReportData {
   };
   topIssues: PrioritizedIssue[];
   tools: Record<string, PrioritizedIssue[]>;
-  patches: { description: string; touches: string[]; unifiedDiff?: string; status?: "suggested" | "preview" | "applied" }[];
+  patches: { description: string; touches: string[]; unifiedDiff?: string; status?: "suggested" | "preview" | "ready" | "blocked" | "applied" | "rejected"; preflight?: { status: "ready" | "blocked"; attempts: number; error?: string } }[];
   recommendations: string[];
   fixSummary: {
     mechanical: number;

@@ -22,6 +22,7 @@ import {
   MAX_ATTEMPTS,
 } from "../fix/llmClient";
 import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
+import { preflightSuggestedPatch } from "../fix/patchPreflight";
 import { PatchTransaction } from "../fix/patchTransaction";
 import { writeReport } from "../report/report";
 import { logger } from "./logger";
@@ -206,12 +207,6 @@ export async function runAudit(
         );
         return { exitCode: 2 };
       }
-      if (config.provider === "aifa" && !config.aifaUserId) {
-        logger.error(
-          '--fix with provider "aifa" requires an end-user ID (set --aifa-user-id or AIFA_USER_ID)',
-        );
-        return { exitCode: 2 };
-      }
 
       logger.debug(
         `Fix endpoint: ${config.provider} → model "${config.model}" @ ${config.baseUrl}${config.apiKey ? " (with API key)" : " (no API key)"}; up to ${MAX_ATTEMPTS} attempts per request`,
@@ -341,8 +336,6 @@ export async function runAudit(
               apiKey: config.apiKey,
               model: config.model,
               provider: config.provider,
-              userId: config.aifaUserId,
-              sessionId: config.aifaSessionId,
             },
             {
               repoRoot,
@@ -412,103 +405,31 @@ export async function runAudit(
             logger.warn(`Skipped patch "${patch.description}": changed-file budget exhausted (${config.maxChangedFiles})`);
             continue;
           }
-          if (config.agentMode === "suggest") {
-            await bindPatchToPreview(repoRoot, patch);
-            allPatches.push(patch);
-            if (targetPath) changedFiles.add(targetPath);
-            logger.info(`Suggested patch: ${patch.description}`);
-            continue;
-          }
+          let candidate = patch;
+          let repairAttempts = 0;
           let result: { success: boolean; error?: string };
-          try {
-            await transaction.capture(patch.unifiedDiff);
-            await transaction.verifyUnchanged();
-            result = await applyDiff(
-              patch.unifiedDiff,
-              repoRoot,
-              config.dryRun,
-            );
-          } catch (error) {
-            result = { success: false, error: `Could not snapshot patch target: ${String(error)}` };
+          if (config.agentMode !== "apply") result = await preflightSuggestedPatch(repoRoot, candidate.unifiedDiff, previousFileIssues);
+          else {
+            try { await transaction.capture(candidate.unifiedDiff); await transaction.verifyUnchanged(candidate.unifiedDiff); result = await applyDiff(candidate.unifiedDiff, repoRoot, config.dryRun); }
+            catch (error) { result = { success: false, error: `Could not snapshot patch target: ${String(error)}` }; }
           }
-
-          // Apply-feedback repair: LLM diffs often carry slightly stale context
-          // (a dropped comma, different spacing). Send the exact apply error and
-          // the CURRENT file content back and ask for a corrected single diff.
-          for (
-            let attempt = 1;
-            !result.success && attempt <= config.patchRetries;
-            attempt++
-          ) {
-            logger.warn(
-              `Patch "${patch.description}" failed to apply (${result.error}); asking the LLM to repair it (${attempt}/${config.patchRetries})`,
-            );
-            const contents: Record<string, string> = {};
-            const target = getDiffTargetPath(patch.unifiedDiff);
-            if (target) {
-              try {
-                contents[target] = await fs.readFile(
-                  resolve(repoRoot, target),
-                  "utf8",
-                );
-              } catch {
-                /* file may be new/absent */
-              }
-            }
+          for (let attempt = 1; !result.success && attempt <= config.patchRetries; attempt++) {
+            repairAttempts = attempt; logger.warn(`Patch "${candidate.description}" failed preflight (${result.error}); asking the LLM to repair it (${attempt}/${config.patchRetries})`);
+            const contents: Record<string, string> = {}; const target = getDiffTargetPath(candidate.unifiedDiff); if (target) { try { contents[target] = await fs.readFile(resolve(repoRoot, target), "utf8"); } catch { /* new file */ } }
             try {
-              claimAiRequest(JSON.stringify({ selected, context, patch, contents }).length);
-              const rep = await repairPatch(
-                {
-                  baseUrl: config.baseUrl,
-                  apiKey: config.apiKey,
-                  model: config.model,
-                  provider: config.provider,
-                  userId: config.aifaUserId,
-                  sessionId: config.aifaSessionId,
-                },
-                {
-                  repoRoot,
-                  issues: selected,
-                  context,
-                  constraints: {
-                    maxFilesChanged: config.maxChangedFiles,
-                    preferMinimalDiff: true,
-                    doNotChangePublicAPI: false,
-                    keepFormatting: true,
-                  },
-                },
-                patch,
-                result.error ?? "unknown apply error",
-                contents,
-                trace,
-              );
-              if (rep.patches.length === 0) break;
-              await transaction.capture(rep.patches[0].unifiedDiff);
-              await transaction.verifyUnchanged();
-              result = await applyDiff(
-                rep.patches[0].unifiedDiff,
-                repoRoot,
-                config.dryRun,
-              );
-              trace.logPatchRepair(
-                patch.description,
-                result.error ?? "",
-                rep.patches[0]?.unifiedDiff,
-                result.success,
-              );
-            } catch (e) {
-              logger.warn(`Patch repair failed: ${String(e)}`);
-              trace.logPatchRepair(
-                patch.description,
-                result.error ?? "unknown",
-                undefined,
-                false,
-                String(e),
-              );
-              break;
-            }
+              claimAiRequest(JSON.stringify({ selected, context, candidate, contents }).length);
+              const rep = await repairPatch({ baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, provider: config.provider }, { repoRoot, issues: selected, context, constraints: { maxFilesChanged: config.maxChangedFiles, preferMinimalDiff: true, doNotChangePublicAPI: false, keepFormatting: true } }, candidate, result.error ?? "unknown preflight error", contents, trace);
+              if (!rep.patches[0]?.unifiedDiff) break; candidate = rep.patches[0];
+              if (config.agentMode !== "apply") result = await preflightSuggestedPatch(repoRoot, candidate.unifiedDiff, previousFileIssues);
+              else { await transaction.capture(candidate.unifiedDiff); await transaction.verifyUnchanged(candidate.unifiedDiff); result = await applyDiff(candidate.unifiedDiff, repoRoot, config.dryRun); }
+              trace.logPatchRepair(candidate.description, result.error ?? "", candidate.unifiedDiff, result.success);
+            } catch (error) { logger.warn(`Patch repair failed: ${String(error)}`); trace.logPatchRepair(candidate.description, result.error ?? "unknown", undefined, false, String(error)); break; }
           }
-
+          if (config.agentMode !== "apply") {
+            Object.assign(patch, candidate, { preflight: result.success ? { status: "ready", attempts: repairAttempts } : { status: "blocked", attempts: repairAttempts, error: result.error ?? "Preflight failed" } });
+            await bindPatchToPreview(repoRoot, patch); allPatches.push(patch); if (targetPath) changedFiles.add(targetPath); logger.info(result.success ? `Patch ready: ${patch.description}` : `Patch blocked: ${patch.description} (${result.error})`); continue;
+          }
+          Object.assign(patch, candidate);
           if (result.success) {
             await bindPatchToPreview(repoRoot, patch);
             allPatches.push(patch);
@@ -614,8 +535,6 @@ export async function runAudit(
                 apiKey: config.apiKey,
                 model: config.analysisModel,
                 provider: config.provider,
-                userId: config.aifaUserId,
-                sessionId: config.aifaSessionId,
               },
               {
                 repoRoot,

@@ -47,8 +47,8 @@ ai-auditor audit . --fix --provider ollama
 # Auto-fix with a free hosted model (e.g. Groq free tier)
 ai-auditor audit . --fix --provider groq --api-key gsk-...
 
-# AIFA (token and end-user ID are supplied by the user)
-ai-auditor audit . --fix --provider aifa --api-key <access-token> --aifa-user-id <user-id>
+# AIFA (token is supplied by the user)
+ai-auditor audit . --fix --provider aifa --api-key <access-token>
 
 # List all model providers
 ai-auditor audit . --list-models
@@ -97,8 +97,6 @@ ai-auditor audit . --fix --model gpt-4o --base-url https://api.openai.com
 | `--provider <id>` | auto | Model provider preset (see Models & Providers below) |
 | `--base-url <url>` | provider default | OpenAI-compatible base URL |
 | `--api-key <key>` | - | API key |
-| `--aifa-user-id <id>` | - | Required AIFA end-user ID (`x-user-id`) |
-| `--aifa-session-id <id>` | - | Optional AIFA conversation session ID |
 | `--list-models` | - | Print available model providers and exit |
 | `--dry-run` | false | Preview fixes without writing |
 | `--verbose` | false | Verbose logging |
@@ -143,8 +141,6 @@ model is pulled (`ollama pull llama3.2`). Local endpoints
 |----------|-------------|
 | `OPENAI_API_KEY` | API key for OpenAI |
 | `AIFA_ACCESS_TOKEN` | User-provided AIFA bearer token |
-| `AIFA_USER_ID` | Required AIFA end-user ID (`x-user-id`) |
-| `AIFA_SESSION_ID` | Optional AIFA conversation session ID |
 | `OPENROUTER_API_KEY` | API key for OpenRouter free models |
 | `GROQ_API_KEY` | API key for Groq free tier |
 | `GEMINI_API_KEY` | API key for Google AI Studio free tier |

@@ -13,8 +13,6 @@ export interface LLMClientConfig {
   apiKey: string;
   model: string;
   provider?: string;
-  userId?: string;
-  sessionId?: string;
 }
 
 export const MAX_ATTEMPTS = 3;
@@ -497,8 +495,6 @@ export function buildChatHeaders(config: LLMClientConfig): Record<string, string
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
   if (config.provider === "aifa") {
     headers["x-request-id"] = randomUUID();
-    if (config.userId) headers["x-user-id"] = config.userId;
-    if (config.sessionId) headers["x-session-id"] = config.sessionId;
     headers.Accept = "application/json";
   }
   try {
@@ -584,7 +580,7 @@ export async function repairPatch(
     {
       role: "system",
       content:
-        "You generate unified diffs for a lint-fixing tool. A diff you produced earlier did not apply cleanly. Return ONLY valid JSON matching FixResponse (exactly one patch). The diff MUST apply cleanly and exactly against the CURRENT file contents provided below — copy context lines character-for-character, keep the correct file paths in the --- / +++ headers (strip any a/ b/ prefixes on the +++ side), and include enough exact context. Rules: exactly one file per patch; do NOT rename/delete/mode-change files; never use @@ -0,0 +1,N @@ to re-create an existing file — emit a context-based hunk instead; never return an empty or whitespace-only diff.",
+        "You generate unified diffs for a lint-fixing tool. A diff you produced earlier either did not apply cleanly or failed preflight verification. Return ONLY valid JSON matching FixResponse (exactly one patch). The repaired patch must fix the requested issue without introducing any new high or critical ESLint/TypeScript issue reported in applyError. The diff MUST apply cleanly and exactly against the CURRENT file contents provided below — copy context lines character-for-character, keep the correct file paths in the --- / +++ headers (strip any a/ b/ prefixes on the +++ side), and include enough exact context. Rules: exactly one file per patch; do NOT rename/delete/mode-change files; never use @@ -0,0 +1,N @@ to re-create an existing file — emit a context-based hunk instead; never return an empty or whitespace-only diff.",
     },
     {
       role: "user",

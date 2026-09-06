@@ -2,11 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { auditArtifactRoot } from "../../platform/artifacts/paths";
-import { applyDiff, getDiffTargetPath } from "../../fix/diffApplier";
+import { applyDiff, getDiffTargetPath, validateDiffPreview } from "../../fix/diffApplier";
 import { PatchTransaction } from "../../fix/patchTransaction";
 import { runEslint } from "../../analyzers/eslint";
 import { runTsc } from "../../analyzers/tsc";
-import { safeRead } from "../../platform/security/safeMutation";
 
 interface StoredPatch { id?: string; unifiedDiff?: string; description?: string; preApplySha256?: string }
 const runDirectory = (repoRoot: string, runId: string) => { if (!/^[0-9T:-]+(?:-[0-9]{2})?$/.test(runId)) throw new Error("Invalid run ID"); return path.join(auditArtifactRoot(repoRoot), runId); };
@@ -17,8 +16,8 @@ export async function applyApprovedPatch(repoRoot: string, runId: string, reques
   const patches = report.patches ?? []; const index = patches.findIndex((item, i) => patchId(item, i) === requestedId); const patch = patches[index];
   if (!patch?.unifiedDiff) throw new Error(`Patch ${requestedId} not found`);
   const target = getDiffTargetPath(patch.unifiedDiff); if (!target || !patch.preApplySha256) throw new Error("Patch lacks preview hash and cannot be approved");
-  try { if ((await safeRead(repoRoot, target)).sha256 !== patch.preApplySha256) throw new Error("Repository changed since preview; regenerate the patch"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT" || patch.preApplySha256 !== "absent") throw error; }
-  const tx = new PatchTransaction(repoRoot, false); await tx.capture(patch.unifiedDiff); await tx.verifyUnchanged();
+  const validation = await validateDiffPreview(patch.unifiedDiff, repoRoot, patch.preApplySha256); if (!validation.valid) throw new Error(`Repository changed since preview; regenerate the patch. ${validation.error ?? "Patch context no longer matches"}`);
+  const tx = new PatchTransaction(repoRoot, false); await tx.capture(patch.unifiedDiff); await tx.verifyUnchanged(patch.unifiedDiff);
   const approval = { schemaVersion: 1, patchId: requestedId, actor, reason, approvedAt: new Date().toISOString(), target, preApplySha256: patch.preApplySha256 };
   await fs.writeFile(path.join(dir, `approval-${requestedId}.json`), JSON.stringify(approval, null, 2), { flag: "wx" });
   const result = await applyDiff(patch.unifiedDiff, repoRoot, false); if (!result.success) { await tx.rollback(); throw new Error(result.error); }

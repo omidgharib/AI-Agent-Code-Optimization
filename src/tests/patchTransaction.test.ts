@@ -27,6 +27,14 @@ describe("PatchTransaction", () => {
     expect(readFileSync(target).equals(original)).toBe(true);
   });
 
+  it("verifies each target independently after an earlier patch is applied", async () => {
+    mkdirSync(join(dir, "src"), { recursive: true }); writeFileSync(join(dir, "src", "a.ts"), "a\n"); writeFileSync(join(dir, "src", "b.ts"), "b\n");
+    const a = `--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,1 +1,1 @@\n-a\n+A\n`; const b = `--- a/src/b.ts\n+++ b/src/b.ts\n@@ -1,1 +1,1 @@\n-b\n+B\n`;
+    const transaction = new PatchTransaction(dir, false); await transaction.capture(a); await transaction.verifyUnchanged(a); expect((await applyDiff(a, dir, false)).success).toBe(true);
+    await transaction.capture(b); await expect(transaction.verifyUnchanged(b)).resolves.toBeUndefined(); expect((await applyDiff(b, dir, false)).success).toBe(true);
+    expect(readFileSync(join(dir, "src", "a.ts"), "utf8")).toBe("A\n"); expect(readFileSync(join(dir, "src", "b.ts"), "utf8")).toBe("B\n");
+  });
+
   it("removes files created during a rejected iteration", async () => {
     const diff = `--- /dev/null
 +++ b/src/new.ts

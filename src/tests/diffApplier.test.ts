@@ -1,5 +1,5 @@
 // FILE: tests/diffApplier.test.ts
-import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
+import { applyDiff, getDiffTargetPath, validateDiffPreview } from "../fix/diffApplier";
 import {
   existsSync,
   mkdtempSync,
@@ -230,5 +230,23 @@ describe("getDiffTargetPath", () => {
 
   it("returns null when the diff has no +++ header", () => {
     expect(getDiffTargetPath("@@ -1,1 +1,1 @@\n x\n")).toBeNull();
+  });
+});
+
+
+describe("validateDiffPreview", () => {
+  it("accepts line-ending-only preview drift when the patch still applies", async () => {
+    const p = join(dir, "src", "index.js"); mkdirSync(dirname(p), { recursive: true });
+    const lf = `const greeting = makeGreeting("world");\nconsole.log(greeting);\n`; writeFileSync(p, lf);
+    const { createHash } = await import("node:crypto"); const previewHash = createHash("sha256").update(lf).digest("hex");
+    writeFileSync(p, lf.replace(/\n/g, "\r\n"));
+    await expect(validateDiffPreview(DIFF("autotest"), dir, previewHash)).resolves.toEqual({ valid: true, rebased: true });
+  });
+  it("rejects semantic drift even when the raw hash changed", async () => {
+    const p = join(dir, "src", "index.js"); mkdirSync(dirname(p), { recursive: true });
+    const original = `const greeting = makeGreeting("world");\nconsole.log(greeting);\n`; writeFileSync(p, original);
+    const { createHash } = await import("node:crypto"); const previewHash = createHash("sha256").update(original).digest("hex");
+    writeFileSync(p, `const greeting = somethingElse();\nconsole.log(greeting);\n`);
+    const result = await validateDiffPreview(DIFF("autotest"), dir, previewHash); expect(result.valid).toBe(false); expect(result.error).toMatch(/Hunk mismatch/);
   });
 });

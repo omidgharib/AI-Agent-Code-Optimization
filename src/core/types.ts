@@ -67,6 +67,7 @@ export interface FixResponse {
     unifiedDiff: string;
     touches: string[];
     preApplySha256?: string;
+    preflight?: { status: "ready" | "blocked"; attempts: number; error?: string };
   }>;
   notes: string[];
 }
@@ -88,8 +89,6 @@ export interface AuditConfig {
   mechanicalAutofix: boolean;
   baseUrl: string;
   apiKey: string;
-  aifaUserId?: string;
-  aifaSessionId?: string;
   dryRun: boolean;
   verbose: boolean;
   html?: boolean;

@@ -35,8 +35,6 @@ export function buildConfig(
     mechanicalAutofix: opts.mechanicalAutofix ?? true,
     baseUrl: model.baseUrl,
     apiKey: model.apiKey,
-    aifaUserId: opts.aifaUserId ?? process.env.AIFA_USER_ID,
-    aifaSessionId: opts.aifaSessionId ?? process.env.AIFA_SESSION_ID,
     dryRun: opts.dryRun ?? false,
     verbose: opts.verbose ?? false,
     html: opts.html ?? false,

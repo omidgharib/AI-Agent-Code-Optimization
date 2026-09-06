@@ -40,8 +40,11 @@ export class PatchTransaction {
     }
   }
 
-  async verifyUnchanged(): Promise<void> {
-    for (const snapshot of this.snapshots.values()) {
+  async verifyUnchanged(unifiedDiff?: string): Promise<void> {
+    const target = unifiedDiff ? getDiffTargetPath(unifiedDiff) : null;
+    const snapshots = target ? [...this.snapshots.values()].filter((snapshot) => snapshot.absolutePath === path.resolve(this.repoRoot, target)) : [...this.snapshots.values()];
+    if (target && snapshots.length !== 1) throw new Error(`No snapshot captured for ${target}`);
+    for (const snapshot of snapshots) {
       if (snapshot.content === null) { try { await safeRead(this.repoRoot, snapshot.relativePath); throw new Error(`TOCTOU detected: ${snapshot.absolutePath} was created after preview`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }
       else { const current = await safeRead(this.repoRoot, snapshot.relativePath); if (current.sha256 !== snapshot.sha256) throw new Error(`TOCTOU detected: ${snapshot.absolutePath} changed after snapshot`); }
     }

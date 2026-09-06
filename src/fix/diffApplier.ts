@@ -243,3 +243,22 @@ export async function applyDiff(
   }
   return { success: true };
 }
+
+
+/** Accept byte-level preview drift only when the diff still matches exactly. */
+export async function validateDiffPreview(unifiedDiff: string, repoRoot: string, expectedSha256: string): Promise<{ valid: boolean; rebased: boolean; error?: string }> {
+  const target = getDiffTargetPath(unifiedDiff);
+  if (!target) return { valid: false, rebased: false, error: "Patch has no target path" };
+  const pathError = checkTargetPath(target, repoRoot) ?? await checkRealTargetPath(target, repoRoot);
+  if (pathError) return { valid: false, rebased: false, error: pathError };
+  try {
+    const current = await fs.readFile(path.resolve(repoRoot, target));
+    const actual = (await import("node:crypto")).createHash("sha256").update(current).digest("hex");
+    if (actual === expectedSha256) return { valid: true, rebased: false };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" && expectedSha256 === "absent") return { valid: true, rebased: false };
+    return { valid: false, rebased: false, error: `Cannot read preview target: ${String(error)}` };
+  }
+  const applicable = await applyDiff(unifiedDiff, repoRoot, true);
+  return applicable.success ? { valid: true, rebased: true } : { valid: false, rebased: false, error: applicable.error ?? "Patch no longer matches the target file" };
+}

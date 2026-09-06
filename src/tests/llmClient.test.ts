@@ -131,25 +131,23 @@ describe("coerceFixResponse (ForgetMeAI actions format)", () => {
 });
 
 describe("AIFA request headers", () => {
-  it("adds bearer auth, tracing, user and optional session headers", () => {
+  it("adds bearer auth and a unique tracing header", () => {
     const first = buildChatHeaders({
       provider: "aifa",
       baseUrl: "https://aifa-chatbot.sandpod.ir/v1",
       model: "assistance-model",
       apiKey: "user-token",
-      userId: "usr-100",
-      sessionId: "sess-001",
     });
     const second = buildChatHeaders({
       provider: "aifa",
       baseUrl: "https://aifa-chatbot.sandpod.ir/v1",
       model: "developer-model",
       apiKey: "user-token",
-      userId: "usr-100",
     });
     expect(first.Authorization).toBe("Bearer user-token");
-    expect(first["x-user-id"]).toBe("usr-100");
-    expect(first["x-session-id"]).toBe("sess-001");
+    expect(first["x-user-id"]).toBeUndefined();
+    expect(first["x-session-id"]).toBeUndefined();
+    expect(first.Accept).toBe("application/json");
     expect(first["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
     expect(second["x-request-id"]).not.toBe(first["x-request-id"]);
   });

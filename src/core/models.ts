@@ -43,7 +43,7 @@ export const MODEL_PROVIDERS: Record<string, ModelProvider> = {
     keyEnv: "AIFA_ACCESS_TOKEN",
     free: false,
     description:
-      "AIFA OpenAI-compatible chat service. Pass the user-provided access token with --api-key (or AIFA_ACCESS_TOKEN) and the required end-user ID with --aifa-user-id (or AIFA_USER_ID).",
+      "AIFA OpenAI-compatible chat service. Pass the user-provided access token with --api-key (or AIFA_ACCESS_TOKEN).",
   },
   ollama: {
     id: "ollama",

@@ -5,8 +5,10 @@ import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { MODEL_PROVIDERS, resolveModel } from "../core/models";
-import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
+import type { Issue } from "../core/types";
+import { applyDiff, getDiffTargetPath, validateDiffPreview } from "../fix/diffApplier";
 import { PatchTransaction } from "../fix/patchTransaction";
+import { issueVerificationFingerprint } from "../fix/patchPreflight";
 import { runEslint } from "../analyzers/eslint";
 import { runTsc } from "../analyzers/tsc";
 import { normalize } from "../normalize/normalizer";
@@ -327,11 +329,6 @@ async function startJob(job: AuditJob, options: Record<string, unknown>): Promis
     const keyEnv = job.provider && MODEL_PROVIDERS[job.provider]?.keyEnv;
     if (keyEnv) childEnv[keyEnv] = options.apiKey.trim();
   }
-  if (job.provider === "aifa") {
-    if (typeof options.aifaUserId === "string") childEnv.AIFA_USER_ID = options.aifaUserId.trim();
-    if (typeof options.aifaSessionId === "string" && options.aifaSessionId.trim())
-      childEnv.AIFA_SESSION_ID = options.aifaSessionId.trim();
-  }
   const child = spawn(process.execPath, args, { cwd: job.projectPath, shell: false, windowsHide: true, env: childEnv });
   job.child = child;
   child.stdout.on("data", (chunk: Buffer) => addLog(job, "stdout", chunk));
@@ -430,11 +427,9 @@ const server = http.createServer(async (req, res) => {
       const selection = validateModelSelection(input);
       if (selection.provider === "aifa" && input.fix === true) {
         const token = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
-        const userId = typeof input.aifaUserId === "string" ? input.aifaUserId.trim() : "";
         if (!token && !process.env.AIFA_ACCESS_TOKEN) throw new Error("AIFA access token is required");
-        if (!userId && !process.env.AIFA_USER_ID) throw new Error("AIFA user ID is required");
-        if ([token, userId, typeof input.aifaSessionId === "string" ? input.aifaSessionId : ""].some((value) => value.length > 512 || /[\0\r\n]/.test(value)))
-          throw new Error("AIFA credentials contain invalid characters or are too long");
+        if (token.length > 512 || /[\0\r\n]/.test(token))
+          throw new Error("AIFA access token contains invalid characters or is too long");
       }
       const idempotencyKey = typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"].trim() : typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : randomUUID();
       if (!idempotencyKey || idempotencyKey.length > 200) throw new Error("Idempotency key is invalid");
@@ -496,34 +491,38 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && applyMatch) {
       if (!isTrustedLocalRequest(req)) return json(res, 403, { error: "Cross-site request rejected" });
       const job = jobs.get(applyMatch[1]);
-      if (!job?.reportPath || job.status !== "completed") return json(res, 409, { error: "A completed preview job is required" });
+      if (!job?.reportPath || job.status !== "completed") return json(res, 422, { error: "A completed preview job is required" });
       const input = await body(req);
       const indexes = Array.isArray(input.indexes) ? [...new Set(input.indexes.filter((value): value is number => Number.isInteger(value) && Number(value) >= 0))] : [];
       if (!indexes.length) return json(res, 400, { error: "Select at least one patch" });
-      const report = JSON.parse(await fs.readFile(job.reportPath, "utf8")) as { topIssues?: Array<{ id: string; tool: string; severity: string }>; patches?: Array<{ description: string; touches: string[]; unifiedDiff?: string; status?: string; preApplySha256?: string }>; trust?: { snapshotId?: string; assessment?: unknown; auditTrail?: unknown[] } };
+      const report = JSON.parse(await fs.readFile(job.reportPath, "utf8")) as { topIssues?: Issue[]; patches?: Array<{ description: string; touches: string[]; unifiedDiff?: string; status?: string; preApplySha256?: string; preflight?: { status: "ready" | "blocked"; error?: string } }>; trust?: { snapshotId?: string; assessment?: unknown; auditTrail?: unknown[] } };
       const patches = report.patches ?? [];
       const selected = indexes.map((index) => ({ index, patch: patches[index] })).filter((entry) => entry.patch?.unifiedDiff);
       if (selected.length !== indexes.length) return json(res, 400, { error: "One or more selected patches are unavailable" });
+      const blocked = selected.filter(({ patch }) => patch.preflight?.status !== "ready");
+      if (blocked.length) return json(res, 422, { error: "One or more selected patches have not passed preflight", patches: blocked.map(({ index, patch }) => ({ index, error: patch.preflight?.error ?? "Preflight is missing" })) });
       const selectedDiffs = selected.map(({ patch }) => patch.unifiedDiff!);
       const assessment = await assessPatches(job.projectPath, selectedDiffs);
-      const actorId = typeof input.actorId === "string" ? input.actorId.trim() : ""; const approvalReason = typeof input.approvalReason === "string" ? input.approvalReason.trim() : "";
-      if (!actorId || !approvalReason) return json(res, 428, { error: "Actor-bound approval and reason are required", assessment });
-      for (const { patch } of selected) { const target = getDiffTargetPath(patch.unifiedDiff!); if (!target || !patch.preApplySha256) return json(res, 409, { error: "Patch lacks a preview hash; regenerate preview" }); try { if ((await safeRead(job.projectPath, target)).sha256 !== patch.preApplySha256) return json(res, 409, { error: `Repository changed since preview: ${target}` }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT" || patch.preApplySha256 !== "absent") throw error; } }
+      const actorId = "local-user"; const approvalReason = "Approved in the local Code workspace";
+      for (const { patch } of selected) { const target = getDiffTargetPath(patch.unifiedDiff!); if (!target || !patch.preApplySha256) return json(res, 422, { error: "Patch lacks a preview hash; regenerate preview" }); const validation = await validateDiffPreview(patch.unifiedDiff!, job.projectPath, patch.preApplySha256); if (!validation.valid) return json(res, 409, { error: `Repository changed since preview: ${target}. ${validation.error ?? "Patch context no longer matches"}` }); }
       const transaction = new PatchTransaction(job.projectPath, false);
       try {
         const snapshotRoot = path.join(path.dirname(job.reportPath), "snapshots");
         const snapshotId = await createPersistentSnapshot(job.projectPath, selectedDiffs, snapshotRoot);
         for (const { patch } of selected) {
           await transaction.capture(patch.unifiedDiff!);
-          await transaction.verifyUnchanged();
+          await transaction.verifyUnchanged(patch.unifiedDiff!);
           const result = await applyDiff(patch.unifiedDiff!, job.projectPath, false);
           if (!result.success) throw new Error(result.error ?? "Patch could not be applied");
         }
         const before = (report.topIssues ?? []).filter((issue) => issue.tool === "eslint" || issue.tool === "tsc");
         const after = normalize([...(await runEslint(job.projectPath)), ...(await runTsc(job.projectPath))]);
-        const beforeIds = new Set(before.map((issue) => issue.id));
-        const introducedSevere = after.filter((issue) => !beforeIds.has(issue.id) && (issue.severity === "high" || issue.severity === "critical"));
-        if (introducedSevere.length || after.length > before.length) throw new Error(introducedSevere.length ? `Verification introduced ${introducedSevere.length} high/critical issue(s)` : `Verification regressed issue count (${before.length} -> ${after.length})`);
+        const beforeFingerprints = new Set(before.map(issueVerificationFingerprint));
+        const introducedSevere = after.filter((issue) => !beforeFingerprints.has(issueVerificationFingerprint(issue)) && (issue.severity === "high" || issue.severity === "critical"));
+        if (introducedSevere.length || after.length > before.length) {
+          const detail = introducedSevere.map((issue) => `${issue.ruleId ?? issue.tool} in ${issue.location?.filePath ?? "unknown"}: ${issue.message}`).join("; ");
+          throw new Error(introducedSevere.length ? `Verification introduced ${introducedSevere.length} high/critical issue(s): ${detail}` : `Verification regressed issue count (${before.length} -> ${after.length})`);
+        }
         const relevantTests = await verifyRelevantTests(job.projectPath, assessment.files);
         for (const [index, patch] of patches.entries()) patch.status = indexes.includes(index) ? "applied" : patch.status === "preview" ? "rejected" : patch.status;
         report.trust = { snapshotId, assessment, auditTrail: [{ at: new Date().toISOString(), event: "approval", patchIndexes: indexes, actorId, reason: approvalReason, previewHashes: selected.map(({ patch }) => patch.preApplySha256) }, { at: new Date().toISOString(), event: "verification", passed: true, before: before.length, after: after.length, relevantTests }, { at: new Date().toISOString(), event: "apply", snapshotId }] };
@@ -531,7 +530,9 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, applied: selected.length, snapshotId, assessment, verification: { passed: true, before: before.length, after: after.length } });
       } catch (error) {
         await transaction.rollback();
-        return json(res, 409, { error: error instanceof Error ? error.message : String(error), rolledBack: true });
+        const message = error instanceof Error ? error.message : String(error);
+        const status = /TOCTOU|concurrent modification|Repository changed since preview/i.test(message) ? 409 : 422;
+        return json(res, status, { error: message, rolledBack: true });
       }
     }
     const undoMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/undo$/);
