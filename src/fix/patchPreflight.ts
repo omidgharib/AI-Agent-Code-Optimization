@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { runEslint } from "../analyzers/eslint";
 import { runTsc } from "../analyzers/tsc";
 import { normalize } from "../normalize/normalizer";
-import type { Issue, PrioritizedIssue } from "../core/types";
+import type { PrioritizedIssue } from "../core/types";
 import { applyDiff } from "./diffApplier";
-
-export const issueVerificationFingerprint = (issue: Pick<Issue, "tool" | "ruleId" | "location" | "message">) => [issue.tool, issue.ruleId ?? "", issue.location?.filePath?.replace(/\\/g, "/").toLowerCase() ?? "", issue.message].join("\0");
+export { issueVerificationFingerprint } from "./changeSet";
+import { issueVerificationFingerprint } from "./changeSet";
 async function createWorkspace(repoRoot: string): Promise<string> {
   const workspace = await fs.mkdtemp(path.join(tmpdir(), "ai-auditor-preflight-"));
   const excluded = new Set([".git", "node_modules", "dist", "build", "out", "coverage", "ai-auditor-report"]);

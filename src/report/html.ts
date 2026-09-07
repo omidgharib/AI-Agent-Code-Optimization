@@ -551,6 +551,19 @@ export function toHtml(data: ReportData): string {
     )
     .join("");
 
+  const cards = data.problemCards ?? [];
+  const logicalChanges = data.changeSets ?? [];
+  const problemCards = cards.map((card) =>
+    `<div class="rec-item"><strong>${esc(card.title)}</strong><br><span class="dim">${esc(card.status)} · ${esc(card.location)}</span><br>${esc(card.importance)}${card.proposedFix ? `<br>Suggested: ${esc(card.proposedFix)}` : ""}</div>`
+  ).join("");
+  const changeSetRows = logicalChanges.map((change) => {
+    const result = change.result;
+    const summary = result
+      ? `${result.fixedIssueIds.length} fixed · ${result.introducedSevere} new severe · tests ${result.checks.relatedTests} (${result.relatedTests.length})`
+      : "No verification result";
+    return `<tr><td><code>${esc(change.id)}</code></td><td>${esc(change.description)}</td><td>${esc(change.status)}</td><td>${esc(summary)}</td><td>${change.touches.map((file) => `<code>${esc(file)}</code>`).join(", ")}</td></tr>`;
+  }).join("");
+
   const lighthouseHtml = data.lighthouse ? lighthouseSections(data.lighthouse) : "";
 
   const tools = data.tools ?? {};
@@ -690,6 +703,8 @@ export function toHtml(data: ReportData): string {
     ${toolCards}
   </div>
   ${lighthouseHtml}
+  ${cards.length ? `<div class="section"><div class="section-header">Problem cards (${cards.length})</div><div class="rec-list">${problemCards}</div></div>` : ""}
+  ${logicalChanges.length ? `<div class="section"><div class="section-header">Logical change sets (${logicalChanges.length})</div><table><thead><tr><th>ID</th><th>Change</th><th>Status</th><th>Verified result</th><th>Files</th></tr></thead><tbody>${changeSetRows}</tbody></table></div>` : ""}
   ${
     data.summary.total === 0
       ? '<div class="section"><div class="section-header">Issues</div><div class="empty">No issues found 🎉</div></div>'

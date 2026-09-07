@@ -28,6 +28,8 @@ function toolLabel(tool: string): string {
 
 export function toMarkdown(data: ReportData): string {
   const lines: string[] = ["# AI Auditor Report\n"];
+  const problemCards = data.problemCards ?? [];
+  const changeSets = data.changeSets ?? [];
   lines.push(`## Summary\n- Total: ${data.summary.total}`);
   lines.push("### By Severity");
   for (const [k, v] of Object.entries(data.summary.bySeverity))
@@ -42,6 +44,32 @@ export function toMarkdown(data: ReportData): string {
   lines.push(`- Mechanical (${data.fixSummary.mechanicalMode}): ${data.fixSummary.mechanical}`);
   lines.push(`- AI patches accepted: ${data.fixSummary.aiPatches}`);
   lines.push(`- Advisory recommendations: ${data.fixSummary.advisoryRecommendations}`);
+
+  if (problemCards.length > 0) {
+    lines.push("\n## Problem cards");
+    for (const card of problemCards) {
+      lines.push(`\n### ${mdEscape(card.title)}`);
+      lines.push(`- Status: ${card.status}`);
+      lines.push(`- Location: ${mdEscape(card.location)}`);
+      lines.push(`- Why it matters: ${mdEscape(card.importance)}`);
+      if (card.proposedFix) lines.push(`- Proposed fix: ${mdEscape(card.proposedFix)}`);
+      if (card.changeSetId) lines.push(`- Change set: ${card.changeSetId}`);
+    }
+  }
+
+  if (changeSets.length > 0) {
+    lines.push("\n## Logical change sets");
+    for (const change of changeSets) {
+      const result = change.result;
+      lines.push(`\n### ${mdEscape(change.description)}`);
+      lines.push(`- Status: ${change.status}`);
+      lines.push(`- Files: ${change.touches.map(mdEscape).join(", ")}`);
+      if (result) {
+        lines.push(`- Result: ${result.fixedIssueIds.length} issue(s) fixed; ${result.introducedSevere} new severe issue(s)`);
+        lines.push(`- Checks: ESLint ${result.checks.eslint}; TypeScript ${result.checks.typescript}; related tests ${result.checks.relatedTests} (${result.relatedTests.length})`);
+      }
+    }
+  }
 
   if (data.lighthouse) {
     const lhr = data.lighthouse;

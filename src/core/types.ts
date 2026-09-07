@@ -68,6 +68,21 @@ export interface FixResponse {
     touches: string[];
     preApplySha256?: string;
     preflight?: { status: "ready" | "blocked"; attempts: number; error?: string };
+    changeSetId?: string;
+    issueIds?: string[];
+    verification?: {
+      passed: boolean;
+      fixedIssueIds: string[];
+      beforeIssueCount: number;
+      afterIssueCount: number;
+      introducedSevere: number;
+      checks: { eslint: "passed" | "failed"; typescript: "passed" | "failed"; relatedTests: "passed" | "failed" | "not-found" };
+      relatedTests: string[];
+      attempts: number;
+      confidence?: { diagnosis: number; patch: number; behavioral: number; status: "green" | "yellow" | "red"; reasons: string[] };
+      impact?: { importers: string[]; routes: string[]; publicApis: string[]; relatedTests: string[]; sensitiveFiles: string[]; policyViolations: string[] };
+      error?: string;
+    };
   }>;
   notes: string[];
 }

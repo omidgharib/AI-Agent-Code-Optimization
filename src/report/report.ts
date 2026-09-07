@@ -14,6 +14,7 @@ import { toHtml } from "./html";
 import { toSarif } from "./sarif";
 import type { SeoHealth } from "../analyzers/seoLab";
 import type { ArchitectureReport } from "../analyzers/architecture";
+import { groupRootCauses } from "../core/rootCause";
 
 async function extractFullPageScreenshot(
   lhr: LighthouseReport,
@@ -81,6 +82,7 @@ export async function writeReport(
   architecture?: ArchitectureReport,
   testHealth?: ReportData["testHealth"],
   performanceLab?: ReportData["performanceLab"],
+  problemIssues: PrioritizedIssue[] = issues,
 ): Promise<void> {
   const outDir = config.reportDir ?? path.join(config.outDir, new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19));
   await fs.mkdir(outDir, { recursive: true });
@@ -99,8 +101,53 @@ export async function writeReport(
       unifiedDiff: p.unifiedDiff,
       preApplySha256: p.preApplySha256,
       preflight: p.preflight,
+      changeSetId: p.changeSetId,
+      issueIds: p.issueIds,
+      verification: p.verification,
       status: p.preflight?.status ?? (agent?.mode === "suggest" ? "suggested" : dryRun ? "preview" : "applied"),
     })),
+    problemCards: problemIssues.map((issue) => {
+      const patch = patches.find((candidate) => candidate.issueIds?.includes(issue.id));
+      const rootCause = groupRootCauses(problemIssues).find((group) => group.issueIds.includes(issue.id));
+      const impact = patch?.verification?.impact;
+      const status = patch
+        ? patch.preflight?.status === "blocked" ? "blocked" as const
+          : agent?.mode === "apply" ? "resolved" as const
+            : "ready-for-approval" as const
+        : "found" as const;
+      return {
+        id: issue.id,
+        title: issue.ruleId ? `${issue.ruleId}: ${issue.message}` : issue.message,
+        explanation: issue.message,
+        technicalExplanation: `${issue.tool}${issue.ruleId ? `/${issue.ruleId}` : ""}: ${issue.message}`,
+        rootCause: rootCause?.rationale ?? "No deterministic common cause was established yet.",
+        location: issue.location?.filePath
+          ? `${issue.location.filePath}${issue.location.startLine ? `:${issue.location.startLine}` : ""}`
+          : "project-wide",
+        affectedFiles: [...new Set([issue.location?.filePath, ...(patch?.touches ?? [])].filter((file): file is string => Boolean(file && file !== "-")))],
+        dependencies: impact ? [...impact.importers, ...impact.routes] : [],
+        importance: `${issue.severity} ${issue.category}; ${issue.rationale.join("; ")}`,
+        ...(issue.fix?.hint ? { proposedFix: issue.fix.hint } : {}),
+        risk: impact?.sensitiveFiles.length || impact?.routes.length ? "high" : patch?.touches && patch.touches.length > 1 ? "medium" : "low",
+        requiredValidation: impact?.routes.length ? ["ESLint", "TypeScript", "related tests", "route/API smoke test"] : ["ESLint", "TypeScript", ...(patch?.verification?.checks.relatedTests === "not-found" ? ["test gap review"] : ["related tests"])],
+        status,
+        ...(patch?.changeSetId ? { changeSetId: patch.changeSetId } : {}),
+      };
+    }),
+    changeSets: [...new Set(patches.map((patch) => patch.changeSetId).filter((id): id is string => Boolean(id)))].map((id) => {
+      const members = patches.filter((patch) => patch.changeSetId === id);
+      const first = members[0];
+      return {
+        id,
+        description: members.map((patch) => patch.description).join("; "),
+        issueIds: [...new Set(members.flatMap((patch) => patch.issueIds ?? []))],
+        touches: [...new Set(members.flatMap((patch) => patch.touches))],
+        status: first.preflight?.status === "blocked"
+          ? "blocked" as const
+          : agent?.mode === "apply" ? "resolved" as const : "ready-for-approval" as const,
+        ...(first.verification ? { result: first.verification } : {}),
+      };
+    }),
     recommendations,
     fixSummary: {
       mechanical: mechanicalFixes,
@@ -117,6 +164,7 @@ export async function writeReport(
     ...(architecture ? { architecture } : {}),
     ...(testHealth ? { testHealth } : {}),
     ...(performanceLab ? { performanceLab } : {}),
+    rootCauseGroups: groupRootCauses(problemIssues),
   };
 
   const jsonData: ReportData = lighthouse

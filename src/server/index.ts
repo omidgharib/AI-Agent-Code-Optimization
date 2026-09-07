@@ -37,6 +37,7 @@ import { PersistentJobRepository, PersistentProjectRepository, sanitizePersisten
 import { allowedEnvironment } from "../platform/security/sandboxRunner";
 import { safeRead } from "../platform/security/safeMutation";
 import { DurableQueue } from "../platform/jobs/durableQueue";
+import { requestArchitectureOpinion } from "../fix/llmClient";
 const execFileAsync = promisify(execFile);
 
 type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -56,6 +57,7 @@ interface AuditJob {
   logs: string[];
   reportPath?: string;
   child?: ChildProcessWithoutNullStreams;
+  projectServer?: ChildProcessWithoutNullStreams;
 }
 
 const HOST = "127.0.0.1";
@@ -287,6 +289,47 @@ async function newestReport(projectPath: string, createdAfterMs = 0): Promise<st
   } catch { /* no report yet */ }
   return undefined;
 }
+
+async function startLocalProjectServer(job: AuditJob): Promise<string | undefined> {
+  let pkg: { scripts?: Record<string, string> };
+  try { pkg = JSON.parse(await fs.readFile(path.join(job.projectPath, "package.json"), "utf8")) as { scripts?: Record<string, string> }; }
+  catch { return undefined; }
+  const script = pkg.scripts?.dev ? "dev" : pkg.scripts?.start ? "start" : undefined;
+  if (!script) { addLog(job, "stderr", Buffer.from("No dev/start script found; Playwright and Lighthouse were skipped.")); return undefined; }
+  const port = 4318;
+  const executable = process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : "npm";
+  const commandArgs = ["run", script, "--", "--host", "127.0.0.1", "--port", String(port)];
+  const child = spawn(executable, process.platform === "win32"
+    ? ["/d", "/s", "/c", ["npm", ...commandArgs].join(" ")]
+    : commandArgs, {
+    cwd: job.projectPath, shell: false, windowsHide: true,
+    env: { ...allowedEnvironment(), PORT: String(port), HOST: "127.0.0.1" },
+  });
+  job.projectServer = child;
+  child.stdout.on("data", (chunk: Buffer) => addLog(job, "stdout", Buffer.from("[project] " + chunk)));
+  child.stderr.on("data", (chunk: Buffer) => addLog(job, "stderr", Buffer.from("[project] " + chunk)));
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (child.exitCode !== null) break;
+    try {
+      const response = await fetch("http://127.0.0.1:" + port, { signal: AbortSignal.timeout(750) });
+      if (response.status < 500) {
+        const url = "http://127.0.0.1:" + port;
+        addLog(job, "stdout", Buffer.from("Started local project for browser checks: " + url));
+        return url;
+      }
+    } catch { /* server is still starting */ }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  addLog(job, "stderr", Buffer.from("Could not start project script " + script + " within 20 seconds; Playwright and Lighthouse were skipped."));
+  child.kill(); delete job.projectServer;
+  return undefined;
+}
+
+function stopLocalProjectServer(job: AuditJob): void {
+  if (!job.projectServer) return;
+  job.projectServer.kill();
+  delete job.projectServer;
+}
 async function startJob(job: AuditJob, options: Record<string, unknown>): Promise<void> {
   job.status = "running";
   job.startedAt = new Date().toISOString();
@@ -317,7 +360,8 @@ async function startJob(job: AuditJob, options: Record<string, unknown>): Promis
   if (options.sarif === true) args.push("--sarif");
   if (options.changedOnly === true) args.push("--changed-only");
   if (typeof options.baselinePath === "string" && options.baselinePath.trim()) args.push("--baseline", options.baselinePath.trim());
-  if (job.url) args.push("--url", job.url);
+  const browserUrl = job.url ?? await startLocalProjectServer(job);
+  if (browserUrl) args.push("--url", browserUrl);
   if (job.provider) args.push("--provider", job.provider);
   if (job.model) args.push("--model", job.model);
   if (job.baseUrl) args.push("--base-url", job.baseUrl);
@@ -335,6 +379,7 @@ async function startJob(job: AuditJob, options: Record<string, unknown>): Promis
   child.stderr.on("data", (chunk: Buffer) => addLog(job, "stderr", chunk));
   child.on("error", (error) => addLog(job, "stderr", Buffer.from(error.message)));
   child.on("close", async (code) => {
+    stopLocalProjectServer(job);
     job.exitCode = code ?? 2;
     job.status = job.status === "cancelled" ? "cancelled" : code === 2 ? "failed" : "completed";
     job.completedAt = new Date().toISOString();
@@ -476,6 +521,21 @@ const server = http.createServer(async (req, res) => {
       const diffs = (report.patches ?? []).map((patch) => patch.unifiedDiff).filter((diff): diff is string => Boolean(diff));
       return json(res, 200, { ...(await assessPatches(job.projectPath, diffs)), disclosure: diffs.map((diff) => ({ file: getDiffTargetPath(diff), changedLines: diff.split(/\r?\n/).filter((line) => /^[+-]/.test(line) && !/^(---|\+\+\+)/.test(line)).slice(0, 40) })) });
     }
+    const architectureOpinionMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/architecture-opinion$/);
+    if (req.method === "POST" && architectureOpinionMatch) {
+      if (!isTrustedLocalRequest(req)) return json(res, 403, { error: "Cross-site request rejected" });
+      const job = jobs.get(architectureOpinionMatch[1]);
+      if (!job?.reportPath) return json(res, 404, { error: "Report not available" });
+      const input = await body(req);
+      const report = JSON.parse(await fs.readFile(job.reportPath, "utf8")) as { architecture?: { debtScore: number; debtFactors: Record<string, number>; nodes: unknown[]; cycles: unknown[]; findings: unknown[] }; architectureOpinion?: unknown };
+      if (!report.architecture) return json(res, 422, { error: "Architecture analysis is not available" });
+      const model = resolveModel({ provider: job.provider, model: job.model, baseUrl: job.baseUrl });
+      if (model.keyRequired && !model.apiKey) return json(res, 422, { error: "The selected AI provider needs an API key configured on the local server" });
+      const opinion = await requestArchitectureOpinion(model, report.architecture, input.language === "en" ? "en" : "fa");
+      report.architectureOpinion = { model: model.model, provider: model.provider, generatedAt: new Date().toISOString(), opinion };
+      await fs.writeFile(job.reportPath, JSON.stringify(report, null, 2));
+      return json(res, 200, report.architectureOpinion);
+    }
     const downloadMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/download$/);
     if (req.method === "GET" && downloadMatch) {
       const job = jobs.get(downloadMatch[1]);
@@ -494,11 +554,17 @@ const server = http.createServer(async (req, res) => {
       if (!job?.reportPath || job.status !== "completed") return json(res, 422, { error: "A completed preview job is required" });
       const input = await body(req);
       const indexes = Array.isArray(input.indexes) ? [...new Set(input.indexes.filter((value): value is number => Number.isInteger(value) && Number(value) >= 0))] : [];
-      if (!indexes.length) return json(res, 400, { error: "Select at least one patch" });
-      const report = JSON.parse(await fs.readFile(job.reportPath, "utf8")) as { topIssues?: Issue[]; patches?: Array<{ description: string; touches: string[]; unifiedDiff?: string; status?: string; preApplySha256?: string; preflight?: { status: "ready" | "blocked"; error?: string } }>; trust?: { snapshotId?: string; assessment?: unknown; auditTrail?: unknown[] } };
+      const changeSetIds = Array.isArray(input.changeSetIds)
+        ? [...new Set(input.changeSetIds.filter((value): value is string => typeof value === "string" && /^[a-f0-9]{16}$/.test(value)))]
+        : [];
+      if (!indexes.length && !changeSetIds.length) return json(res, 400, { error: "Select at least one logical change set" });
+      const report = JSON.parse(await fs.readFile(job.reportPath, "utf8")) as { topIssues?: Issue[]; patches?: Array<{ description: string; touches: string[]; unifiedDiff?: string; status?: string; preApplySha256?: string; changeSetId?: string; preflight?: { status: "ready" | "blocked"; error?: string } }>; trust?: { snapshotId?: string; assessment?: unknown; auditTrail?: unknown[] } };
       const patches = report.patches ?? [];
-      const selected = indexes.map((index) => ({ index, patch: patches[index] })).filter((entry) => entry.patch?.unifiedDiff);
-      if (selected.length !== indexes.length) return json(res, 400, { error: "One or more selected patches are unavailable" });
+      const selected = changeSetIds.length
+        ? patches.map((patch, index) => ({ index, patch })).filter(({ patch }) => changeSetIds.includes(patch.changeSetId ?? ""))
+        : indexes.map((index) => ({ index, patch: patches[index] })).filter((entry) => entry.patch?.unifiedDiff);
+      if (!selected.length || (!changeSetIds.length && selected.length !== indexes.length))
+        return json(res, 400, { error: "One or more selected change sets are unavailable" });
       const blocked = selected.filter(({ patch }) => patch.preflight?.status !== "ready");
       if (blocked.length) return json(res, 422, { error: "One or more selected patches have not passed preflight", patches: blocked.map(({ index, patch }) => ({ index, error: patch.preflight?.error ?? "Preflight is missing" })) });
       const selectedDiffs = selected.map(({ patch }) => patch.unifiedDiff!);
@@ -524,10 +590,11 @@ const server = http.createServer(async (req, res) => {
           throw new Error(introducedSevere.length ? `Verification introduced ${introducedSevere.length} high/critical issue(s): ${detail}` : `Verification regressed issue count (${before.length} -> ${after.length})`);
         }
         const relevantTests = await verifyRelevantTests(job.projectPath, assessment.files);
-        for (const [index, patch] of patches.entries()) patch.status = indexes.includes(index) ? "applied" : patch.status === "preview" ? "rejected" : patch.status;
-        report.trust = { snapshotId, assessment, auditTrail: [{ at: new Date().toISOString(), event: "approval", patchIndexes: indexes, actorId, reason: approvalReason, previewHashes: selected.map(({ patch }) => patch.preApplySha256) }, { at: new Date().toISOString(), event: "verification", passed: true, before: before.length, after: after.length, relevantTests }, { at: new Date().toISOString(), event: "apply", snapshotId }] };
+        const selectedIndexes = new Set(selected.map(({ index }) => index));
+        for (const [index, patch] of patches.entries()) patch.status = selectedIndexes.has(index) ? "applied" : patch.status === "preview" ? "rejected" : patch.status;
+        report.trust = { snapshotId, assessment, auditTrail: [{ at: new Date().toISOString(), event: "approval", changeSetIds: changeSetIds.length ? changeSetIds : undefined, patchIndexes: [...selectedIndexes], actorId, reason: approvalReason, previewHashes: selected.map(({ patch }) => patch.preApplySha256) }, { at: new Date().toISOString(), event: "verification", passed: true, before: before.length, after: after.length, relevantTests }, { at: new Date().toISOString(), event: "apply", snapshotId }] };
         await fs.writeFile(job.reportPath, JSON.stringify(report, null, 2));
-        return json(res, 200, { ok: true, applied: selected.length, snapshotId, assessment, verification: { passed: true, before: before.length, after: after.length } });
+        return json(res, 200, { ok: true, applied: selected.length, changeSets: changeSetIds.length, snapshotId, assessment, verification: { passed: true, before: before.length, after: after.length, relevantTests } });
       } catch (error) {
         await transaction.rollback();
         const message = error instanceof Error ? error.message : String(error);
@@ -536,6 +603,21 @@ const server = http.createServer(async (req, res) => {
       }
     }
     const undoMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/undo$/);
+    const rejectMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/patches\/reject$/);
+    if (req.method === "POST" && rejectMatch) {
+      if (!isTrustedLocalRequest(req)) return json(res, 403, { error: "Cross-site request rejected" });
+      const job = jobs.get(rejectMatch[1]); if (!job?.reportPath) return json(res, 404, { error: "Report not available" });
+      const input = await body(req); const changeSetId = typeof input.changeSetId === "string" ? input.changeSetId : "";
+      const reason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim().slice(0, 300) : "other";
+      if (!/^[a-f0-9]{16}$/.test(changeSetId)) return json(res, 400, { error: "A change set is required" });
+      const report = JSON.parse(await fs.readFile(job.reportPath, "utf8")) as { patches?: Array<{ changeSetId?: string; status?: string }> };
+      const members = (report.patches ?? []).filter((patch) => patch.changeSetId === changeSetId); if (!members.length) return json(res, 404, { error: "Change set not found" });
+      for (const patch of members) patch.status = "rejected";
+      await fs.writeFile(job.reportPath, JSON.stringify(report, null, 2));
+      const feedbackPath = path.join(job.projectPath, ".ai-auditor-feedback.json"); let history: unknown[] = []; try { history = JSON.parse(await fs.readFile(feedbackPath, "utf8")); } catch { /* first feedback */ }
+      history.push({ at: new Date().toISOString(), changeSetId, reason }); await fs.writeFile(feedbackPath, JSON.stringify(history.slice(-100), null, 2));
+      return json(res, 200, { ok: true, reason });
+    }
     if (req.method === "POST" && undoMatch) {
       if (!isTrustedLocalRequest(req)) return json(res, 403, { error: "Cross-site request rejected" });
       const job = jobs.get(undoMatch[1]); if (!job?.reportPath) return json(res, 404, { error: "Report not available" });
@@ -550,7 +632,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && cancelMatch) {
       const job = jobs.get(cancelMatch[1]);
       if (!job?.child || job.status !== "running") return json(res, 409, { error: "Job is not running" });
-      await persistentJobs.requestCancellation("local", job.id); job.status = "cancelled"; job.child.kill(); return json(res, 202, publicJob(job));
+      await persistentJobs.requestCancellation("local", job.id); job.status = "cancelled"; stopLocalProjectServer(job); job.child.kill(); return json(res, 202, publicJob(job));
     }
     if (url.pathname.startsWith("/api/")) return json(res, 404, { error: "Not found" });
     await serveStatic(url.pathname, res);

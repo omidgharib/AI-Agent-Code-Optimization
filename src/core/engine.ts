@@ -23,6 +23,7 @@ import {
 } from "../fix/llmClient";
 import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
 import { preflightSuggestedPatch } from "../fix/patchPreflight";
+import { prepareChangeSet } from "../fix/changeSet";
 import { PatchTransaction } from "../fix/patchTransaction";
 import { writeReport } from "../report/report";
 import { logger } from "./logger";
@@ -44,6 +45,8 @@ import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { auditArtifactRoot } from "../platform/artifacts/paths";
 import { safeRead } from "../platform/security/safeMutation";
+import { loadCodeAuditPolicy } from "../code/application/policy";
+import { analyzeChangeImpact } from "../fix/changeDecision";
 
 interface AnalyzeResult {
   issues: Issue[];
@@ -144,6 +147,13 @@ async function buildProjectMetadataContext(
     return [];
   }
 }
+async function buildUserFeedbackContext(repoRoot: string): Promise<Array<{ filePath: string; excerpt: string }>> {
+  try {
+    const feedback = JSON.parse(await fs.readFile(path.join(repoRoot, ".ai-auditor-feedback.json"), "utf8")) as Array<{ reason?: string }>;
+    const reasons = feedback.slice(-20).map((item) => item.reason).filter((reason): reason is string => Boolean(reason));
+    return reasons.length ? [{ filePath: "AI_AUDITOR_USER_FEEDBACK.json", excerpt: JSON.stringify({ constraintsFromRejectedPatches: [...new Set(reasons)] }) }] : [];
+  } catch { return []; }
+}
 
 export async function runAudit(
   config: AuditConfig,
@@ -182,6 +192,7 @@ export async function runAudit(
   try {
     const project = await detectProject(repoRoot);
     repoRoot = project.root;
+    const projectPolicy = await loadCodeAuditPolicy(repoRoot);
     logger.info(
       `Project: ${project.name} (${project.languages.join("+") || "JS/TS tooling"}, ${project.framework}, ${project.packageManager})`,
     );
@@ -198,9 +209,13 @@ export async function runAudit(
     const architecture = initialAnalysis.architecture;
 
     let prioritized = prioritize(issues);
+    const problemCardIssues = prioritized;
     logger.info(`Found ${prioritized.length} issues`);
 
     if (config.fix) {
+      config.maxAiRequests = Math.min(config.maxAiRequests, projectPolicy.maxAiRequests);
+      config.maxAgentTokens = Math.min(config.maxAgentTokens, projectPolicy.maxAiTokens);
+      config.maxChangedFiles = Math.min(config.maxChangedFiles, projectPolicy.maxFilesPerChangeSet);
       if (config.keyRequired && !config.apiKey) {
         logger.error(
           `--fix requires an API key for provider "${config.provider}" (set --api-key or the provider's key env var)`,
@@ -286,10 +301,16 @@ export async function runAudit(
       logger.info(`Agent controls: mode=${config.agentMode}, requests<=${config.maxAiRequests}, tokens<=${config.maxAgentTokens}, seconds<=${config.maxAgentSeconds}, files<=${config.maxChangedFiles}`);
       const advisoryPool = selectAdvisoryIssues(prioritized.filter(withinUserScope));
       const projectMetadataContext = await buildProjectMetadataContext(repoRoot);
+      const userFeedbackContext = await buildUserFeedbackContext(repoRoot);
 
       let traceIteration = 0;
       for (let iter = 0; iter < config.maxFixIterations; iter++) {
-        const planned = selectIssuesForFix(prioritized.filter(withinUserScope), config.fixBatch);
+        // An explicit UI selection is one user intent: never silently truncate
+        // it to the normal background batch size.
+        const planned = selectIssuesForFix(
+          prioritized.filter(withinUserScope),
+          selectedIds.size > 0 ? selectedIds.size : config.fixBatch,
+        );
         const selected = planned
           .flatMap((p) => p.issues)
           .filter((i) => !mechanicallyFixedIds.has(i.id));
@@ -316,9 +337,13 @@ export async function runAudit(
         const previousFileIssues = prioritized.filter(
           (issue) => issue.location?.filePath && issue.location.filePath !== "-",
         );
+        const selectedFiles = [...new Set(selected.map((issue) => issue.location?.filePath).filter((file): file is string => Boolean(file && file !== "-")))];
+        const impact = await analyzeChangeImpact(repoRoot, selectedFiles, projectPolicy);
         const context = [
           ...projectMetadataContext,
+          ...userFeedbackContext,
           ...(await buildContext(selected, repoRoot)),
+          { filePath: "AI_AUDITOR_CHANGE_IMPACT.json", excerpt: JSON.stringify(impact, null, 2) },
         ];
 
         trace.logIterationStart(++traceIteration, selected, context);
@@ -344,7 +369,7 @@ export async function runAudit(
               constraints: {
                 maxFilesChanged: config.maxChangedFiles,
                 preferMinimalDiff: true,
-                doNotChangePublicAPI: false,
+                doNotChangePublicAPI: projectPolicy.protectedPublicApis.length > 0,
                 keepFormatting: true,
               },
             },
@@ -393,6 +418,67 @@ export async function runAudit(
           break;
         }
 
+        // A model response is one logical approval unit. Validate all dependent
+        // files together so a temporarily inconsistent half-fix is never
+        // rejected or approved on its own.
+        const suggestedChangeSet = config.agentMode !== "apply"
+          ? await prepareChangeSet(
+              repoRoot,
+              fixResponse.patches.filter((patch) => patch.unifiedDiff?.trim()),
+              previousFileIssues,
+              selected.map((issue) => issue.id),
+              0,
+              projectPolicy,
+            )
+          : undefined;
+        if (suggestedChangeSet) {
+          for (const patch of fixResponse.patches) {
+            patch.changeSetId = suggestedChangeSet.id;
+            patch.issueIds = suggestedChangeSet.issueIds;
+            patch.verification = {
+              passed: suggestedChangeSet.verification.passed,
+              fixedIssueIds: suggestedChangeSet.verification.fixedIssueIds,
+              beforeIssueCount: suggestedChangeSet.verification.beforeIssueCount,
+              afterIssueCount: suggestedChangeSet.verification.afterIssueCount,
+              introducedSevere: suggestedChangeSet.verification.introducedSevere,
+              checks: suggestedChangeSet.verification.checks,
+              relatedTests: suggestedChangeSet.verification.relatedTests,
+              attempts: suggestedChangeSet.verification.attempts,
+              confidence: suggestedChangeSet.verification.confidence,
+              impact: suggestedChangeSet.verification.impact,
+              ...(suggestedChangeSet.verification.error ? { error: suggestedChangeSet.verification.error } : {}),
+            };
+          }
+        } else {
+          const changeSetId = createHash("sha256")
+            .update(fixResponse.patches.map((patch) => patch.unifiedDiff).join("\0"))
+            .digest("hex")
+            .slice(0, 16);
+          for (const patch of fixResponse.patches) {
+            patch.changeSetId = changeSetId;
+            patch.issueIds = selected.map((issue) => issue.id);
+          }
+        }
+
+        // A multi-file preview is all-or-nothing. Do not let a repair of one
+        // member make the UI show a misleading ready patch beside a blocked
+        // dependent patch.
+        if (suggestedChangeSet && !suggestedChangeSet.verification.passed) {
+          for (const patch of fixResponse.patches) {
+            Object.assign(patch, {
+              preflight: {
+                status: "blocked" as const,
+                attempts: suggestedChangeSet.verification.attempts,
+                error: suggestedChangeSet.verification.error ?? "The logical change set did not pass verification",
+              },
+            });
+            await bindPatchToPreview(repoRoot, patch);
+            allPatches.push(patch);
+          }
+          logger.warn("Change set blocked: " + (suggestedChangeSet.verification.error ?? "verification failed"));
+          break;
+        }
+
         let anyApplied = false;
         for (const patch of fixResponse.patches) {
           if (!patch.unifiedDiff || !patch.unifiedDiff.trim()) {
@@ -408,7 +494,11 @@ export async function runAudit(
           let candidate = patch;
           let repairAttempts = 0;
           let result: { success: boolean; error?: string };
-          if (config.agentMode !== "apply") result = await preflightSuggestedPatch(repoRoot, candidate.unifiedDiff, previousFileIssues);
+          if (config.agentMode !== "apply" && suggestedChangeSet)
+            result = suggestedChangeSet.verification.passed
+              ? { success: true }
+              : { success: false, error: suggestedChangeSet.verification.error };
+          else if (config.agentMode !== "apply") result = await preflightSuggestedPatch(repoRoot, candidate.unifiedDiff, previousFileIssues);
           else {
             try { await transaction.capture(candidate.unifiedDiff); await transaction.verifyUnchanged(candidate.unifiedDiff); result = await applyDiff(candidate.unifiedDiff, repoRoot, config.dryRun); }
             catch (error) { result = { success: false, error: `Could not snapshot patch target: ${String(error)}` }; }
@@ -624,6 +714,7 @@ export async function runAudit(
       architecture,
       await (async () => { const sources = architecture?.nodes.filter((node) => node.kind === "production").map((node) => node.file) ?? []; const mapping = await detectTests(repoRoot, sources); const coverage = await importCoverage(repoRoot).catch(() => []); return testHealth(mapping, coverage); })(),
       lighthouse ? performanceScores([metricsFromLighthouse(config.url ?? "/", "mobile", lighthouse), ...(lighthouseDesktop ? [metricsFromLighthouse(config.url ?? "/", "desktop", lighthouseDesktop)] : [])]) : undefined,
+      problemCardIssues,
     );
 
     if (config.exportPath) {

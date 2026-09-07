@@ -514,6 +514,34 @@ export function buildChatHeaders(config: LLMClientConfig): Record<string, string
   return headers;
 }
 
+/** One bounded, structure-only architecture review. No source contents are sent. */
+export async function requestArchitectureOpinion(
+  config: LLMClientConfig,
+  architecture: { debtScore: number; debtFactors: Record<string, number>; nodes: unknown[]; cycles: unknown[]; findings: unknown[] },
+  language: "fa" | "en" = "fa",
+): Promise<string> {
+  const url = buildChatUrl(config.baseUrl);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: buildChatHeaders(config),
+    signal: AbortSignal.timeout(requestTimeoutMs()),
+    body: JSON.stringify({
+      model: config.model,
+      messages: [
+        { role: "system", content: language === "fa"
+          ? "شما معمار ارشد نرم‌افزار هستید. فقط بر اساس ساختار پروژه‌ای که داده شده، یک نظر کوتاه فارسی ارائه دهید: نقاط قوت، ۳ ریسک مهم به ترتیب اولویت، و ۳ اقدام عملی. به کد یا اطلاعاتی خارج از داده اتکا نکنید. پاسخ markdown کوتاه باشد."
+          : "You are a senior software architect. Based only on the supplied project structure, provide a concise Markdown review: strengths, three prioritized risks, and three practical actions. Do not infer source code not present in the data." },
+        { role: "user", content: JSON.stringify(architecture) },
+      ],
+    }),
+  });
+  if (!response.ok) throw new Error("Architecture review failed: HTTP " + response.status + " " + response.statusText);
+  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const content = payload.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error("Architecture review returned no text");
+  return content.slice(0, 12000);
+}
+
 function chatInit(
   config: LLMClientConfig,
   messages: Array<{ role: string; content: string }>,
@@ -535,7 +563,7 @@ export async function requestFix(
     {
       role: "system",
       content:
-        "You are an expert code-fixing agent specialized in security, performance, style, and maintainability issues. Return ONLY valid JSON with exactly this shape: {\"patches\":[{\"description\":\"string\",\"unifiedDiff\":\"string\",\"touches\":[\"relative/file/path\"]}],\"notes\":[\"string\"]}. Never rename `description`, `unifiedDiff`, or `touches` to other field names. Do not include markdown. Provide unified diffs only. Treat the provided package.json metadata as the source of truth for the project's framework and tooling; never recommend framework-specific APIs, commands, or packages unless that framework is present in dependencies or devDependencies. When fixing security issues, ensure all inputs are validated and sanitized. When fixing performance issues, optimize without breaking functionality. When fixing an undefined reference (e.g. missing function, variable, import), you are expected to ADD the missing declaration in the affected file. If the provided file excerpt is truncated or shows only issue lines, rely on the issue message and line numbers to construct an accurate unified diff. When an issue has NO source file target (e.g. Lighthouse/custom audits, location.filePath is \"-\"), do NOT invent a file or diff — instead return concrete, actionable recommendations in the `notes` array and omit `patches` for those issues. Diff rules: emit exactly one file per patch; do NOT rename, delete, or mode-change files; include --- / +++ headers (a/ and b/ prefixes optional on the +++ side) and at least one @@ hunk; never use @@ -0,0 +1,N @@ to create a file that already has content; never return an empty or whitespace-only diff.",
+        "You are an expert code-fixing agent specialized in security, performance, style, and maintainability issues. Return ONLY valid JSON with exactly this shape: {\"patches\":[{\"description\":\"string\",\"unifiedDiff\":\"string\",\"touches\":[\"relative/file/path\"]}],\"notes\":[\"string\"]}. Never rename `description`, `unifiedDiff`, or `touches` to other field names. Do not include markdown. Provide unified diffs only. Treat ALL supplied issues as one requested logical change-set: cover every editable selected issue. When multiple selected issues point to the same file, produce ONE comprehensive diff for that file which addresses all of them; never emit competing diffs for the same file. If an issue cannot safely be fixed, explain that exact issue in notes instead of silently omitting it. Treat the provided package.json metadata as the source of truth for the project's framework and tooling; never recommend framework-specific APIs, commands, or packages unless that framework is present in dependencies or devDependencies. When fixing security issues, ensure all inputs are validated and sanitized. When fixing performance issues, optimize without breaking functionality. When an undefined reference (e.g. missing function, variable, import) is selected, add the missing declaration in the affected file. When an issue has NO source file target (e.g. Lighthouse/custom audits, location.filePath is \"-\"), do NOT invent a file or diff — instead return concrete, actionable recommendations in the `notes` array and omit `patches` for those issues. Diff rules: emit exactly one file per patch; do NOT rename, delete, or mode-change files; include --- / +++ headers (a/ and b/ prefixes optional on the +++ side) and at least one @@ hunk; never use @@ -0,0 +1,N @@ to create a file that already has content; never return an empty or whitespace-only diff.",
     },
     { role: "user", content: JSON.stringify(req) },
   ];
