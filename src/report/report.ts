@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { PrioritizedIssue, FixResponse } from "../core/types";
+import type { PrioritizedIssue, FixResponse, SonarSummary } from "../core/types";
 import {
   buildSummary,
   groupByTool,
@@ -12,6 +12,7 @@ import {
 import { toMarkdown } from "./markdown";
 import { toHtml } from "./html";
 import { toSarif } from "./sarif";
+import { reportToPdf } from "./pdf";
 import type { SeoHealth } from "../analyzers/seoLab";
 import type { ArchitectureReport } from "../analyzers/architecture";
 import { groupRootCauses } from "../core/rootCause";
@@ -70,7 +71,7 @@ export async function writeReport(
   issues: PrioritizedIssue[],
   patches: FixResponse["patches"],
   verification: { passed: boolean; errors: string[] },
-  config: { json: boolean; md: boolean; html: boolean; sarif?: boolean; outDir: string; reportDir?: string },
+  config: { json: boolean; md: boolean; html: boolean; sarif?: boolean; pdf?: boolean; outDir: string; reportDir?: string },
   lighthouse?: LighthouseReport,
   recommendations: string[] = [],
   mechanicalFixes = 0,
@@ -83,6 +84,7 @@ export async function writeReport(
   testHealth?: ReportData["testHealth"],
   performanceLab?: ReportData["performanceLab"],
   problemIssues: PrioritizedIssue[] = issues,
+  sonar?: SonarSummary,
 ): Promise<void> {
   const outDir = config.reportDir ?? path.join(config.outDir, new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19));
   await fs.mkdir(outDir, { recursive: true });
@@ -165,6 +167,7 @@ export async function writeReport(
     ...(testHealth ? { testHealth } : {}),
     ...(performanceLab ? { performanceLab } : {}),
     rootCauseGroups: groupRootCauses(problemIssues),
+    ...(sonar ? { sonar } : {}),
   };
 
   const jsonData: ReportData = lighthouse
@@ -183,4 +186,6 @@ export async function writeReport(
     await fs.writeFile(path.join(outDir, "report.html"), toHtml(data));
   if (config.sarif)
     await fs.writeFile(path.join(outDir, "report.sarif"), JSON.stringify(toSarif(issues), null, 2));
+  if (config.pdf)
+    await fs.writeFile(path.join(outDir, "report.pdf"), reportToPdf(data));
 }

@@ -176,11 +176,11 @@ const next = await analyze(repoRoot, config.url, false);
 
 ### Playwright
 
-`runPlaywright` is currently a roadmap feature.
+`runPlaywright` is implemented in `src/analyzers/playwright.ts` (spawns system Chrome/Edge headless via `chrome-launcher`; requires an audit `url`). It runs console, network, navigation, SEO metadata, robots/sitemap and internal-link checks.
 
-- Do not assume Playwright analysis is already available.
-- If implementing it, preserve the exact required export name.
-- Add tests and register it in the engine.
+- Playwright analysis is available when an audit `url` is provided.
+- Preserve the exact required export name (`runPlaywright`).
+- The engine registers it; `src/verify/testIntelligence.ts` also builds bounded Playwright journeys.
 - Do not make Playwright a mandatory dependency of audited repositories.
 
 ---

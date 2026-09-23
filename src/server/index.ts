@@ -2,6 +2,7 @@ import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child
 import { createReadStream, mkdirSync } from "node:fs";
 import fs from "node:fs/promises";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { MODEL_PROVIDERS, resolveModel } from "../core/models";
@@ -266,7 +267,8 @@ function emit(job: AuditJob, event: string, data: unknown): void {
 }
 
 function addLog(job: AuditJob, source: "stdout" | "stderr", chunk: Buffer): void {
-  for (const line of chunk.toString("utf8").split(/\r?\n/).filter(Boolean)) {
+  const clean = chunk.toString("utf8").replace(/[\u001B\u009B][[\]()#;?]*(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]+)*)?\u0007|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g, "");
+  for (const line of clean.split(/\r?\n/).filter(Boolean)) {
     const entry = `${source === "stderr" ? "!" : ">"} ${line}`;
     job.logs.push(entry);
     if (job.logs.length > 500) job.logs.shift();
@@ -296,7 +298,7 @@ async function startLocalProjectServer(job: AuditJob): Promise<string | undefine
   catch { return undefined; }
   const script = pkg.scripts?.dev ? "dev" : pkg.scripts?.start ? "start" : undefined;
   if (!script) { addLog(job, "stderr", Buffer.from("No dev/start script found; Playwright and Lighthouse were skipped.")); return undefined; }
-  const port = 4318;
+  const port = await findAvailableProjectPort();
   const executable = process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : "npm";
   const commandArgs = ["run", script, "--", "--host", "127.0.0.1", "--port", String(port)];
   const child = spawn(executable, process.platform === "win32"
@@ -327,8 +329,23 @@ async function startLocalProjectServer(job: AuditJob): Promise<string | undefine
 
 function stopLocalProjectServer(job: AuditJob): void {
   if (!job.projectServer) return;
-  job.projectServer.kill();
+  const pid = job.projectServer.pid;
+  if (process.platform === "win32" && pid) spawn("taskkill.exe", ["/pid", String(pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
+  else job.projectServer.kill();
   delete job.projectServer;
+}
+
+async function findAvailableProjectPort(start = 4318): Promise<number> {
+  for (let port = start; port < start + 50; port++) {
+    const available = await new Promise<boolean>((resolve) => {
+      const probe = createNetServer();
+      probe.unref();
+      probe.once("error", () => resolve(false));
+      probe.listen(port, "127.0.0.1", () => probe.close(() => resolve(true)));
+    });
+    if (available) return port;
+  }
+  throw new Error("No free local port is available for browser checks");
 }
 async function startJob(job: AuditJob, options: Record<string, unknown>): Promise<void> {
   job.status = "running";
@@ -354,6 +371,7 @@ async function startJob(job: AuditJob, options: Record<string, unknown>): Promis
   boundedNumber("maxChangedFiles", "--max-changed-files", 1, 50);
   boundedNumber("maxAgentTokens", "--max-agent-tokens", 1000, 2_000_000);
   if (typeof options.analysisModel === "string" && options.analysisModel.trim()) args.push("--analysis-model", options.analysisModel.trim());
+  if (typeof options.strategy === "string" && ["minimal", "standard", "refactor"].includes(options.strategy)) args.push("--strategy", options.strategy);
   boundedNumber("maxCritical", "--max-critical", 0, 100000);
   boundedNumber("maxHigh", "--max-high", 0, 100000);
   if (options.failOnNew === true) args.push("--fail-on-new");
@@ -373,6 +391,19 @@ async function startJob(job: AuditJob, options: Record<string, unknown>): Promis
     const keyEnv = job.provider && MODEL_PROVIDERS[job.provider]?.keyEnv;
     if (keyEnv) childEnv[keyEnv] = options.apiKey.trim();
   }
+  if (options.sonarEnabled === true) childEnv.AI_AUDITOR_SONAR_ENABLED = "true";
+  if (typeof options.sonarHostUrl === "string") childEnv.AI_AUDITOR_SONAR_HOST_URL = options.sonarHostUrl.trim();
+  if (typeof options.sonarProjectKey === "string") childEnv.AI_AUDITOR_SONAR_PROJECT_KEY = options.sonarProjectKey.trim();
+  if (options.sonarEnabled === true) {
+    // The sandbox defaults npm to offline mode. The scanner is downloaded through npx
+    // when it is not installed locally, so explicitly allow this one trusted package path.
+    childEnv.npm_config_offline = "false";
+    childEnv.npm_config_registry = "https://registry.npmjs.org";
+    childEnv.npm_config_cache = process.env.npm_config_cache || path.join(process.env.LOCALAPPDATA || process.cwd(), "npm-cache");
+    const savedSonarToken = process.env.SONAR_TOKEN;
+    if (savedSonarToken) childEnv.SONAR_TOKEN = savedSonarToken;
+  }
+  if (typeof options.sonarToken === "string" && options.sonarToken.trim()) childEnv.SONAR_TOKEN = options.sonarToken.trim();
   const child = spawn(process.execPath, args, { cwd: job.projectPath, shell: false, windowsHide: true, env: childEnv });
   job.child = child;
   child.stdout.on("data", (chunk: Buffer) => addLog(job, "stdout", chunk));
@@ -490,6 +521,14 @@ const server = http.createServer(async (req, res) => {
       if (!accepted.duplicate) setImmediate(() => void startJob(job, input));
       return;
     }
+    if (req.method === "POST" && url.pathname === "/api/sonar/check") {
+      if (!isTrustedLocalRequest(req)) return json(res, 403, { error: "Cross-site request rejected" });
+      const input = await body(req); const hostUrl = typeof input.hostUrl === "string" ? input.hostUrl.trim() : "http://127.0.0.1:9000"; const token = typeof input.token === "string" ? input.token.trim() : process.env.SONAR_TOKEN;
+      const parsed = new URL(hostUrl); if (!["127.0.0.1", "localhost", "::1"].includes(parsed.hostname)) return json(res, 400, { error: "SonarQube host must be local" });
+      const headers = token ? { authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}` } : undefined;
+      try { const response = await fetch(`${hostUrl.replace(/\/$/, "")}/api/system/status`, { headers, signal: AbortSignal.timeout(5000) }); if (!response.ok) return json(res, 422, { connected: false, error: `SonarQube returned HTTP ${response.status}` }); return json(res, 200, { connected: true }); }
+      catch (error) { return json(res, 422, { connected: false, error: error instanceof Error ? error.message : String(error) }); }
+    }
     const jobMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)$/);
     if (req.method === "GET" && jobMatch) {
       const job = jobs.get(jobMatch[1]);
@@ -513,13 +552,34 @@ const server = http.createServer(async (req, res) => {
       if (!job?.reportPath) return json(res, 404, { error: "Report not available" });
       return json(res, 200, JSON.parse(await fs.readFile(job.reportPath, "utf8")));
     }
-    const trustMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/trust$/);
+const trustMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/trust$/);
     if (req.method === "GET" && trustMatch) {
       const job = jobs.get(trustMatch[1]);
       if (!job?.reportPath) return json(res, 404, { error: "Report not available" });
       const report = JSON.parse(await fs.readFile(job.reportPath, "utf8")) as { patches?: Array<{ unifiedDiff?: string }> };
       const diffs = (report.patches ?? []).map((patch) => patch.unifiedDiff).filter((diff): diff is string => Boolean(diff));
       return json(res, 200, { ...(await assessPatches(job.projectPath, diffs)), disclosure: diffs.map((diff) => ({ file: getDiffTargetPath(diff), changedLines: diff.split(/\r?\n/).filter((line) => /^[+-]/.test(line) && !/^(---|\+\+\+)/.test(line)).slice(0, 40) })) });
+    }
+    const excerptMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/excerpt$/);
+    if (req.method === "GET" && excerptMatch) {
+      const job = jobs.get(excerptMatch[1]);
+      if (!job?.reportPath || !job.projectPath) return json(res, 404, { error: "Job not available" });
+      const file = url.searchParams.get("file") ?? "";
+      if (file.length === 0 || /\0/.test(file) || path.isAbsolute(file)) return json(res, 400, { error: "A repo-relative file path is required" });
+      const rawLine = url.searchParams.get("line");
+      const target = rawLine ? Number.parseInt(rawLine, 10) : 1;
+      if (!Number.isInteger(target) || target < 1) return json(res, 400, { error: "Line must be a positive integer" });
+      const rawRadius = url.searchParams.get("radius");
+      const radius = rawRadius ? Math.min(50, Math.max(1, Number.parseInt(rawRadius, 10) || 15)) : 15;
+      let read: { bytes: Buffer };
+      try { read = await safeRead(job.projectPath, file); } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : String(error) }); }
+      const all = read.bytes.toString("utf8").split(/\r?\n/);
+      const maxLine = all.length;
+      const focusLine = Math.min(target, maxLine);
+      const start = Math.max(1, focusLine - radius);
+      const end = Math.min(maxLine, focusLine + radius);
+      const lines = all.slice(start - 1, end).map((content, index) => ({ n: start + index, content, focus: start + index === focusLine }));
+      return json(res, 200, { file, line: focusLine, lines, truncated: maxLine > end, totalLines: maxLine });
     }
     const architectureOpinionMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/architecture-opinion$/);
     if (req.method === "POST" && architectureOpinionMatch) {

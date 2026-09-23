@@ -1,4 +1,4 @@
-export type Tool = "eslint" | "tsc" | "playwright" | "lighthouse" | "sonarqube" | "custom";
+export type Tool = "eslint" | "tsc" | "playwright" | "lighthouse" | "sonar" | "custom";
 export type Severity = "low" | "medium" | "high" | "critical";
 export type Category = "bug" | "security" | "performance" | "maintainability" | "a11y" | "seo" | "style" | "test";
 export type Effort = "xs" | "s" | "m" | "l";

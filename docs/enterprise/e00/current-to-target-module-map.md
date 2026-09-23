@@ -20,7 +20,7 @@ Inventory of every current `src/` directory/module group (2026-09-03). Legacy me
 | `seo/*.ts` | SEO Workspace | Site/environment identity independent of repo. |
 | `fix/*.ts` | Code Audit | AI transport may use platform port; patch semantics stay Code. |
 | `normalize/normalizer.ts`, `prioritize/prioritize.ts` | Code Audit | Current Issue is not a universal domain contract. |
-| `verify/*.ts` | Code Audit | Remove unused `verify.ts` after coverage confirmation. |
+| `verify/*.ts` | Code Audit | `verify.ts` removed (unused); `testIntelligence.ts` and `visualRegression.ts` are wired. |
 | `report/report.ts`, `html.ts`, `markdown.ts`, `sarif.ts`, `summary.ts` | Platform reporting | Consume contracts/artifact port. |
 | `report/_report.ts` | Legacy; remove E01 | Stale duplicate. |
 | `tests/*.test.ts` | Co-locate by target owner | Boundary integration/contract tests remain. |

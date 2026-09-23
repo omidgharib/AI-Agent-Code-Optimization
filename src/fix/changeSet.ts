@@ -14,6 +14,8 @@ import { PatchTransaction } from "./patchTransaction";
 import { safeRead } from "../platform/security/safeMutation";
 import { loadCodeAuditPolicy, type CodeAuditPolicy } from "../code/application/policy";
 import { analyzeChangeImpact, scoreDecision, type ChangeImpact, type ConfidenceScores } from "./changeDecision";
+import { findNewBlockingSonarIssues, runSonar, type SonarConfig } from "../analyzers/sonar";
+import type { SonarSummary } from "../core/types";
 
 const execFileAsync = promisify(execFile);
 type Patch = FixResponse["patches"][number];
@@ -33,6 +35,7 @@ export interface ChangeSetVerification {
   attempts: number;
   confidence?: ConfidenceScores;
   impact?: ChangeImpact;
+  sonar?: SonarSummary & { introducedSevere: number };
   error?: string;
 }
 
@@ -111,6 +114,7 @@ export async function prepareChangeSet(
   issueIds: string[],
   attempts = 0,
   policy?: CodeAuditPolicy,
+  sonarConfig?: SonarConfig,
 ): Promise<PreparedChangeSet> {
   const effectivePolicy = policy ?? await loadCodeAuditPolicy(repoRoot);
   const touches = touchedFiles(patches);
@@ -131,14 +135,15 @@ export async function prepareChangeSet(
       const applied = await applyDiff(patch.unifiedDiff, workspace, false);
       if (!applied.success) throw new Error(applied.error);
     }
-    const [eslintIssues, tscIssues, tests, impact] = await Promise.all([
+    const [eslintIssues, tscIssues, tests, impact, sonarRun] = await Promise.all([
       runEslint(workspace),
       runTsc(workspace),
       runRelatedTests(workspace, touches),
       analyzeChangeImpact(repoRoot, touches, effectivePolicy),
+      sonarConfig?.enabled ? runSonar(workspace, sonarConfig) : Promise.resolve({ issues: [] as Issue[], summary: { status: "not-run" as const, hostUrl: sonarConfig?.hostUrl ?? "http://127.0.0.1:9000", projectKey: sonarConfig?.projectKey ?? "", issueCount: 0, reason: "SonarQube is disabled" } }),
     ]);
-    const after = normalize([...eslintIssues, ...tscIssues]);
-    const before = baseline.filter((issue) => issue.tool === "eslint" || issue.tool === "tsc");
+    const after = normalize([...eslintIssues, ...tscIssues, ...sonarRun.issues]);
+    const before = baseline.filter((issue) => issue.tool === "eslint" || issue.tool === "tsc" || issue.tool === "sonar");
     const known = new Set(before.map(issueVerificationFingerprint));
     const remaining = new Set(after.map(issueVerificationFingerprint));
     const fixedIssueIds = before.filter((issue) => !remaining.has(issueVerificationFingerprint(issue))).map((issue) => issue.id);
@@ -147,19 +152,23 @@ export async function prepareChangeSet(
     const introduced = after.filter((issue) =>
       !known.has(issueVerificationFingerprint(issue)) &&
       (issue.severity === "high" || issue.severity === "critical"));
+    const introducedSonar = findNewBlockingSonarIssues(before, after);
     // A preview is ready only when it resolves every editable issue the user
     // explicitly selected. Resolving one out of several must not look like a
     // safe, complete change-set.
     const changedLines = patches.reduce((count, patch) => count + patch.unifiedDiff.split(/\r?\n/).filter((line) => /^[+-]/.test(line) && !/^(---|\+\+\+)/.test(line)).length, 0);
     if (changedLines > effectivePolicy.maxLinesPerChangeSet) impact.policyViolations.push(`policy allows at most ${effectivePolicy.maxLinesPerChangeSet} changed lines per change set`);
-    const confidence = scoreDecision({ issues: selectedCodeIssues, fixedSelected: selectedCodeIssues.length - unresolvedSelected.length, selected: selectedCodeIssues.length, introducedSevere: introduced.length, tests: tests.status, impact });
+    const blockingIntroduced = introduced.filter((issue) => issue.tool !== "sonar" || introducedSonar.includes(issue));
+    const confidence = scoreDecision({ issues: selectedCodeIssues, fixedSelected: selectedCodeIssues.length - unresolvedSelected.length, selected: selectedCodeIssues.length, introducedSevere: blockingIntroduced.length, tests: tests.status, impact });
     // Apply is deliberately stricter than patch generation: a yellow preview
     // remains useful evidence, but it is not an approval-ready change set.
     const passed = confidence.status === "green";
     const error = impact.policyViolations.length
       ? `Policy blocked change set: ${impact.policyViolations.join("; ")}`
-      : introduced.length
-      ? `Introduced ${introduced.length} high/critical issue(s)`
+      : introducedSonar.length
+      ? `Sonar preflight introduced ${introducedSonar.length} high/critical bug or vulnerability: ${introducedSonar.map((issue) => `${issue.ruleId ?? "sonar"} in ${issue.location?.filePath ?? "unknown"}:${issue.location?.startLine ?? 1}`).join("; ")}`
+      : blockingIntroduced.length
+      ? `Introduced ${blockingIntroduced.length} high/critical issue(s)`
       : unresolvedSelected.length
         ? `Preview resolved ${selectedCodeIssues.length - unresolvedSelected.length}/${selectedCodeIssues.length} selected issue(s); the AI response did not cover every selected issue`
         : tests.error;
@@ -170,7 +179,7 @@ export async function prepareChangeSet(
         fixedIssueIds,
         beforeIssueCount: before.length,
         afterIssueCount: after.length,
-        introducedSevere: introduced.length,
+        introducedSevere: blockingIntroduced.length,
         checks: {
           // Keep the per-tool result aligned with the readiness gate: a newly
           // introduced high ESLint finding is just as unsafe to apply as a
@@ -184,6 +193,7 @@ export async function prepareChangeSet(
         attempts,
         confidence,
         impact,
+        sonar: { ...sonarRun.summary, introducedSevere: introducedSonar.length },
         ...(error ? { error } : {}),
       },
     };
@@ -201,6 +211,7 @@ export async function prepareChangeSet(
         attempts,
         confidence: { diagnosis: 0, patch: 0, behavioral: 0, status: "red", reasons: [String(error)] },
         impact: { importers: [], routes: [], publicApis: [], relatedTests: [], sensitiveFiles: [], policyViolations: [] },
+        sonar: sonarConfig ? { status: "not-run", hostUrl: sonarConfig.hostUrl, projectKey: sonarConfig.projectKey, issueCount: 0, introducedSevere: 0, reason: String(error) } : undefined,
         error: String(error),
       },
     };

@@ -4,7 +4,7 @@ export type Tool =
   | "tsc"
   | "playwright"
   | "lighthouse"
-  | "sonarqube"
+  | "sonar"
   | "custom";
 export type Severity = "low" | "medium" | "high" | "critical";
 export type Category =
@@ -23,6 +23,7 @@ export type FixStrategy =
   | "cross-file" // LLM, multiple files, needs care/approval
   | "advisory"; // lighthouse et al., recommendations only, NO diff
 export type AgentMode = "suggest" | "dry-run" | "apply";
+export type SpecialistStrategy = "minimal" | "standard" | "refactor";
 
 export interface Issue {
   id: string;
@@ -81,6 +82,7 @@ export interface FixResponse {
       attempts: number;
       confidence?: { diagnosis: number; patch: number; behavioral: number; status: "green" | "yellow" | "red"; reasons: string[] };
       impact?: { importers: string[]; routes: string[]; publicApis: string[]; relatedTests: string[]; sensitiveFiles: string[]; policyViolations: string[] };
+      sonar?: SonarSummary & { introducedSevere: number };
       error?: string;
     };
   }>;
@@ -116,14 +118,25 @@ export interface AuditConfig {
   analysisModel: string;
   maxAgentTokens: number;
   maxCostUsd: number;
+  specialistStrategy?: SpecialistStrategy;
   baselinePath?: string;
   maxCritical: number;
   maxHigh: number;
   failOnNew: boolean;
   minLighthouseScores: Record<string, number>;
-  sarif: boolean;
+sarif: boolean;
   changedOnly: boolean;
   exportPath?: string;
+  pdf?: boolean;
+}
+
+export interface SonarSummary {
+  status: "passed" | "failed" | "not-run";
+  hostUrl: string;
+  projectKey: string;
+  qualityGate?: "OK" | "ERROR" | "WARN" | "NONE";
+  issueCount: number;
+  reason?: string;
 }
 
 // Compatibility surface: new consumers should import domain-neutral contracts

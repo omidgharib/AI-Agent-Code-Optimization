@@ -47,13 +47,15 @@ export function buildConfig(
     analysisModel: opts.analysisModel ?? model.model,
     maxAgentTokens: opts.maxAgentTokens ?? 100_000,
     maxCostUsd: opts.maxCostUsd ?? 0,
+    specialistStrategy: opts.specialistStrategy ?? "standard",
     baselinePath: opts.baselinePath,
     maxCritical: opts.maxCritical ?? Number.MAX_SAFE_INTEGER,
     maxHigh: opts.maxHigh ?? Number.MAX_SAFE_INTEGER,
     failOnNew: opts.failOnNew ?? false,
     minLighthouseScores: opts.minLighthouseScores ?? {},
-    sarif: opts.sarif ?? false,
+sarif: opts.sarif ?? false,
     changedOnly: opts.changedOnly ?? false,
     exportPath: opts.exportPath,
+    pdf: opts.pdf ?? false,
   };
 }

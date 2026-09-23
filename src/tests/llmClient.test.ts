@@ -128,6 +128,20 @@ describe("coerceFixResponse (ForgetMeAI actions format)", () => {
     expect(coerced.patches[0].touches).toEqual(["src/a.ts"]);
     expect(coerced.patches[0].description).toBeTruthy();
   });
+
+  it("accepts a bare single-diff object under the patch key (repair responses)", () => {
+    const raw = {
+      patch:
+        "--- a/src/analytics.js\n+++ b/src/analytics.js\n@@ -1,4 +1,2 @@\n-var visitCount = 0;\n+const visitCount = 0;\n",
+    };
+    const coerced = coerceFixResponse(raw) as {
+      patches: Array<{ description: string; unifiedDiff: string; touches: string[] }>;
+      notes: string[];
+    };
+    expect(coerced.patches).toHaveLength(1);
+    expect(coerced.patches[0].unifiedDiff).toContain("+++ b/src/analytics.js");
+    expect(coerced.patches[0].touches).toEqual([]);
+  });
 });
 
 describe("AIFA request headers", () => {

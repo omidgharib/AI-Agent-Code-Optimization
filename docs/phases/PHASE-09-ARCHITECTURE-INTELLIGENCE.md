@@ -6,16 +6,16 @@ Explain the structure, coupling and technical debt of JavaScript and TypeScript 
 
 ## Planned acceptance criteria
 
-- [ ] Build a TypeScript-aware module, import and export graph.
-- [ ] Detect circular dependencies with complete cycle paths.
-- [ ] Detect unused files, exports and direct dependencies with confidence levels.
-- [ ] Detect oversized modules/components, high coupling and boundary violations.
-- [ ] Group duplicated logic and distinguish generated or test fixtures from production code.
-- [ ] Calculate an explainable Technical Debt score.
+- [x] Build a TypeScript-aware module, import and export graph.
+- [x] Detect circular dependencies with complete cycle paths.
+- [x] Detect unused files, exports and direct dependencies with confidence levels.
+- [x] Detect oversized modules/components, high coupling and boundary violations.
+- [x] Group duplicated logic and distinguish generated or test fixtures from production code.
+- [x] Calculate an explainable Technical Debt score.
 - [ ] Render interactive dependency and architecture graphs in the bilingual UI.
-- [ ] Calculate blast radius for a file, symbol or proposed patch.
-- [ ] Generate staged refactoring plans without changing public APIs by default.
-- [ ] Export architecture findings in JSON, Markdown and SARIF-compatible form where applicable.
+- [x] Calculate blast radius for a file, symbol or proposed patch.
+- [x] Generate staged refactoring plans without changing public APIs by default.
+- [x] Export architecture findings in JSON, Markdown and SARIF-compatible form where applicable.
 
 ## Out of scope
 
@@ -30,3 +30,7 @@ Explain the structure, coupling and technical debt of JavaScript and TypeScript 
 ## Start instruction
 
 Ask: `Implement Phase 9 using docs/phases/PHASE-09-ARCHITECTURE-INTELLIGENCE.md`.
+
+## 2026-09-21 implementation note
+
+The remaining deterministic criteria are implemented in `src/analyzers/architectureRefactoring.ts` (`groupDuplicatedLogic`, `duplicationWindows`, `generateRefactoringPlan`, `findBoundaryViolations`, `analyzeDuplicationFromDisk`, `normalizeDuplicationToken`) on top of the existing `src/analyzers/architecture.ts` module graph, cycle detector and debt score. Covered by `phase9-architecture` tests in `src/tests/finalPhases.test.ts`. The only unchecked criterion is the interactive graph surface in the bilingual UI.

@@ -15,6 +15,7 @@
     "test:architecture": "jest src/tests/e01Contracts.test.ts --runInBand",
     "test:persistence": "jest src/tests/e02Persistence.test.ts --runInBand",
     "test:security": "jest src/tests/e03Security.test.ts --runInBand",
+    "test:e2e": "npm run build:all && npm --prefix ui run test:e2e",
     "security:gate": "node scripts/security-gates.js",
     "sbom": "npm sbom --sbom-format cyclonedx > sbom.cdx.json",
     "start": "node dist/cli/index.js",
@@ -22,6 +23,7 @@
     "ui:dev": "npm --prefix ui run dev"
   },
   "dependencies": {
+    "@sonar/scan": "^5.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "chalk": "^5.3.0",

@@ -9,8 +9,8 @@ The web application is intentionally limited to JavaScript and TypeScript projec
 - [x] JavaScript/TypeScript project gate (`package.json` required)
 - [x] Audits launched without a command shell
 - [x] In-memory job registry, cancellation, bounded logs, and report endpoint
-- [ ] Harden `diffApplier` against traversal, `.git`, secrets, and lockfiles
-- [ ] Add Git worktree/snapshot rollback before write-enabled fixes
+- [x] Harden `diffApplier` against traversal, `.git`, secrets, and lockfiles
+- [x] Add Git worktree/snapshot rollback before write-enabled fixes
 
 ## Phase 2 — Bilingual React dashboard
 
@@ -20,28 +20,29 @@ The web application is intentionally limited to JavaScript and TypeScript projec
 - [x] Issue summary, severity filtering, live output, and recent jobs
 - [x] Language preference persisted locally
 - [x] Cross-platform local folder browser with `package.json` validation
-- [ ] Dark/light themes and accessibility audit
+- [x] Dark/light themes and accessibility audit
 
 ## Phase 3 — Audit workflow
 
 - [x] Server-sent events for live status and logs
 - [x] Cancellation and JSON report loading
-- [ ] Persist job history across server restarts
-- [ ] Dedicated issue detail view with evidence and source excerpt
-- [ ] Before/after metrics and downloadable reports
+- [x] Persist job history across server restarts [server-side `local.db` recovery; client restores jobs after a server restart]
+- [x] Dedicated issue detail view with evidence and source excerpt [dialog + path-safe `/api/jobs/:id/excerpt` endpoint]
+- [x] Before/after metrics and downloadable reports [patch diff-grid, trend bars, JSON/MD/HTML/SARIF downloads]
 - [x] Lighthouse target URL control and CLI wiring
-- [ ] Lighthouse result visualization
+- [x] Lighthouse result visualization [LHR fully rendered in the CLI HTML/Markdown reports; the dashboard shows per-category score cards and run trend deltas]
 
 ## Phase 4 — Controlled optimization
 
 - [x] Provider/model selector with live OpenAI-compatible model discovery
 - [x] ForgetMeAI preset (`http://127.0.0.1:9655`) and live model status
-- [ ] Reviewable unified diff per patch
-- [ ] Per-patch approve/reject controls
-- [ ] Test/build command detection and verification output
-- [ ] Rollback failed verification
+- [x] Reviewable unified diff per patch
+- [x] Per-patch approve/reject controls
+- [x] Test/build command detection and verification output
+- [x] Rollback failed verification [snapshot restore in the Trust Center]
 - [x] Provider/model settings without exposing API keys to the browser
-- [ ] End-to-end tests for audit, preview, apply, verify, and rollback
+- [x] Playwright E2E smoke suite [dashboard, theme, language, folder dialog, validation — `ui/e2e/smoke.spec.ts`, `npm --prefix ui run test:e2e`]
+- [ ] End-to-end tests covering full audit → preview → apply → verify → rollback flows
 - [x] Optional Chrome MCP test contract with stable selectors (no runtime dependency)
 
 ## Local commands

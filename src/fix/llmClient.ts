@@ -247,15 +247,22 @@ export function coerceFixResponse(raw: unknown): unknown {
     }
 
     if (!Array.isArray(o.patches)) {
-      if (typeof o.unifiedDiff === "string") {
+      const singleDiff =
+        asString(o.unifiedDiff) ?? asString(o.patch) ?? asString(o.diff);
+      if (typeof singleDiff === "string") {
         return {
           patches: [
             {
-              description: asString(o.description) ?? "LLM-proposed fix",
-              unifiedDiff: o.unifiedDiff,
+              description:
+                asString(o.description) ??
+                asString(o.message) ??
+                "LLM-proposed fix",
+              unifiedDiff: singleDiff,
               touches: Array.isArray(o.touches)
                 ? o.touches.filter((t): t is string => typeof t === "string")
-                : [],
+                : asString(o.filePath)
+                  ? [asString(o.filePath) as string]
+                  : [],
             },
           ],
           notes: Array.isArray(o.notes)

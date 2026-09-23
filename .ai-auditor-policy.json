@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "sonar": {
+    "enabled": true,
+    "required": false,
+    "hostUrl": "http://127.0.0.1:9000",
+    "projectKey": "ai-auditor-local",
+    "sources": ["src", "ui/src"],
+    "tests": ["src/tests"],
+    "exclusions": [
+      "src/tests/**",
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/coverage/**",
+      "**/ai-auditor-report/**"
+    ]
+  }
+}

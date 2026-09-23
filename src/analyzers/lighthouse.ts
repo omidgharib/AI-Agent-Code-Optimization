@@ -1,5 +1,6 @@
 // src/analyzers/lighthouse.ts
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { logger } from "../core/logger";
 import type { Issue } from "../core/types";
 import type { LighthouseAudit, LighthouseReport } from "../report/summary";
@@ -130,7 +131,15 @@ export async function runLighthouse(url: string, profile: "mobile" | "desktop" =
     const chromeLauncher = await import("chrome-launcher");
     const lighthouse = (await import("lighthouse")).default;
 
+    const windowsBrowser = process.platform === "win32" ? [
+      process.env.CHROME_PATH,
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))) : undefined;
     const chrome = await chromeLauncher.launch({
+      ...(windowsBrowser ? { chromePath: windowsBrowser } : {}),
       chromeFlags: ["--headless", "--no-sandbox"],
     });
 

@@ -6,7 +6,7 @@ import type { PersistencePort } from "./port";
 export type DurableJobStatus = "queued" | "leased" | "running" | "retry_wait" | "completed" | "failed" | "cancelled";
 export interface DurableJob { id: string; tenantId: string; projectId: string; kind: AuditCommand["kind"]; status: DurableJobStatus; idempotencyKey: string; command: AuditCommand; configSnapshot: Record<string, unknown>; analyzerVersions?: Record<string, string>; leaseOwner?: string; leaseExpiresAt?: string; cancelRequestedAt?: string; checkpoint?: Record<string, unknown>; artifactId?: string; createdAt: string; updatedAt: string; completedAt?: string }
 const parse = <T>(value: unknown): T => JSON.parse(String(value)) as T;
-const SECRET_KEY = /(?:api[_-]?key|access[_-]?token|authorization|password|secret|session[_-]?id)/i;
+const SECRET_KEY = /(?:api[_-]?key|token|authorization|password|secret|session[_-]?id)/i;
 export function sanitizePersistentSnapshot(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizePersistentSnapshot);
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, SECRET_KEY.test(key) ? "<REDACTED>" : sanitizePersistentSnapshot(item)]));

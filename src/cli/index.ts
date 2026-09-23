@@ -10,6 +10,27 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { watch } from "node:fs";
 import { applyApprovedPatch, verifyCodeRun } from "../code/application/patchCommands";
+import { buildAnnotations } from "../report/annotations";
+
+async function writeAnnotations(projectPath: string, formats: { github: boolean; gitlab: boolean }): Promise<string[]> {
+  const reportRoot = path.join(projectPath, "ai-auditor-report");
+  const dirs = (await fs.readdir(reportRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort().reverse();
+  if (!dirs.length) return [];
+  const newest = path.resolve(reportRoot, dirs[0]);
+  const data = JSON.parse(await fs.readFile(path.join(newest, "report.json"), "utf8")) as { topIssues?: Array<{ id: string; severity: "low" | "medium" | "high" | "critical"; ruleId?: string; message: string; location?: { filePath: string; startLine?: number } }> };
+  const artifacts = buildAnnotations(data.topIssues ?? [], formats);
+  const written: string[] = [];
+  for (const group of [artifacts.github, artifacts.gitlab]) {
+    if (!group) continue;
+    for (const file of group.files) {
+      const target = path.resolve(newest, file.name);
+      if (path.dirname(target) !== path.resolve(newest)) throw new Error(`Refusing to write outside report dir: ${target}`);
+      await fs.writeFile(target, file.content);
+      written.push(target);
+    }
+  }
+  return written;
+}
 
 const program = new Command();
 const runCodeAudit = new RunCodeAudit(legacyCodeAuditRunner);
@@ -65,6 +86,7 @@ program
   .option("--max-agent-seconds <n>", "Maximum total agent time in seconds", "300")
   .option("--max-changed-files <n>", "Maximum files the agent may change", "5")
   .option("--analysis-model <model>", "Separate model for advisory/analysis requests")
+  .option("--strategy <strategy>", "Specialist agent strategy (minimal|standard|refactor)")
   .option("--max-agent-tokens <n>", "Estimated input-token budget", "100000")
   .option("--max-cost-usd <n>", "Estimated cost budget in USD; 0 disables", "0")
   .option("--baseline <report.json>", "Compare against a baseline report")
@@ -85,7 +107,10 @@ program
     "--url <url>",
     "URL to audit with Lighthouse (e.g. http://localhost:3000)",
   )
-  .option("--html", "Write HTML report")
+.option("--html", "Write HTML report")
+  .option("--pdf", "Write a small printable report.pdf")
+  .option("--github-annotations", "Emit GitHub workflow annotations for the run")
+  .option("--gitlab-annotations", "Emit GitLab Code Quality report")
   .option("--export <path>", "Explicitly copy generated report files to this directory")
   .action(async (auditPath: string | undefined, opts) => {
     if (opts.verbose) setVerbose(true);
@@ -101,6 +126,7 @@ program
 
     const agentMode = (opts.agentMode ?? (opts.dryRun ? "dry-run" : "apply")) as AgentMode;
     if (!["suggest", "dry-run", "apply"].includes(agentMode)) throw new Error("Invalid --agent-mode; use suggest, dry-run or apply");
+    if (opts.strategy && !["minimal", "standard", "refactor"].includes(opts.strategy)) throw new Error("Invalid --strategy; use minimal, standard or refactor");
     if (opts.url) console.warn("[deprecated] `audit --url` compatibility mode will be removed after this release; use the independent SEO Workspace/API for URL analysis.");
     const config = buildConfig({
       path: auditPath ?? process.cwd(),
@@ -128,19 +154,22 @@ program
       analysisModel: opts.analysisModel,
       maxAgentTokens: parseInt(opts.maxAgentTokens, 10),
       maxCostUsd: parseFloat(opts.maxCostUsd),
+      specialistStrategy: opts.strategy as "minimal" | "standard" | "refactor" | undefined,
       baselinePath: opts.baseline,
       maxCritical: opts.maxCritical === undefined ? undefined : parseInt(opts.maxCritical, 10),
       maxHigh: opts.maxHigh === undefined ? undefined : parseInt(opts.maxHigh, 10),
       failOnNew: opts.failOnNew ?? false,
       minLighthouseScores: Object.fromEntries([["performance", opts.minPerformance], ["accessibility", opts.minAccessibility], ["seo", opts.minSeo]].filter((entry) => entry[1] !== undefined).map(([key, value]) => [key, Number(value)])),
-      sarif: opts.sarif ?? false,
+sarif: opts.sarif ?? false,
       changedOnly: opts.changedOnly ?? false,
       verbose: opts.verbose ?? false,
       html: opts.html ?? false,
+      pdf: opts.pdf ?? false,
       exportPath: opts.export,
     });
 
     const { exitCode } = await runCodeAudit.execute(config);
+    if (opts.githubAnnotations || opts.gitlabAnnotations) console.log(await writeAnnotations(path.resolve(auditPath ?? process.cwd()), { github: opts.githubAnnotations ?? false, gitlab: opts.gitlabAnnotations ?? false }));
     process.exit(exitCode);
   });
 
@@ -151,9 +180,11 @@ program
   .option("--retention <n>", "Number of report runs to retain", "30")
   .option("--max-critical <n>", "Maximum critical issues", "0")
   .option("--max-high <n>", "Maximum high issues", "0")
-  .option("--sarif", "Write SARIF on each run")
+.option("--sarif", "Write SARIF on each run")
   .option("--watch", "Run after source file changes instead of a fixed interval")
   .option("--webhook <url>", "POST a notification when the quality gate fails")
+  .option("--github-annotations", "Emit GitHub workflow annotations for the newest run")
+  .option("--gitlab-annotations", "Emit GitLab Code Quality report for the newest run")
   .action(async (monitorPath: string | undefined, opts) => {
     const projectPath = path.resolve(monitorPath ?? process.cwd());
     const intervalMs = Math.max(1, Number(opts.interval)) * 60_000;
@@ -168,6 +199,7 @@ program
           if (path.dirname(target) === path.resolve(reportRoot)) await fs.rm(target, { recursive: true, force: true });
         }
       } catch { /* report directory may not exist yet */ }
+      if (opts.githubAnnotations || opts.gitlabAnnotations) { const targets = await writeAnnotations(projectPath, { github: opts.githubAnnotations ?? false, gitlab: opts.gitlabAnnotations ?? false }); if (targets.length) console.log(`[monitor] annotations written: ${targets.join(", ")}`); }
       console.log(`[monitor] ${new Date().toISOString()} exit=${result.exitCode}${result.exitCode === 3 ? " QUALITY GATE FAILED" : ""}`);
       if (result.exitCode === 3 && opts.webhook) {
         try { await fetch(String(opts.webhook), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ product: "ai-auditor", projectPath, status: "quality-gate-failed", at: new Date().toISOString() }) }); }

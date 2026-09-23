@@ -3,6 +3,7 @@ import type { QualityGateResult } from "../core/qualityGate";
 import type { SeoHealth } from "../analyzers/seoLab";
 import type { ArchitectureReport } from "../analyzers/architecture";
 import type { RootCauseGroup } from "../core/rootCause";
+import type { SonarSummary } from "../core/types";
 
 export interface LighthouseCategory {
   id: string;
@@ -92,7 +93,7 @@ export interface ReportData {
   };
   topIssues: PrioritizedIssue[];
   tools: Record<string, PrioritizedIssue[]>;
-  patches: { description: string; touches: string[]; unifiedDiff?: string; status?: "suggested" | "preview" | "ready" | "blocked" | "applied" | "rejected"; preflight?: { status: "ready" | "blocked"; attempts: number; error?: string }; changeSetId?: string; issueIds?: string[]; verification?: { passed: boolean; fixedIssueIds: string[]; beforeIssueCount: number; afterIssueCount: number; introducedSevere: number; checks: { eslint: "passed" | "failed"; typescript: "passed" | "failed"; relatedTests: "passed" | "failed" | "not-found" }; relatedTests: string[]; attempts: number; confidence?: { diagnosis: number; patch: number; behavioral: number; status: "green" | "yellow" | "red"; reasons: string[] }; impact?: { importers: string[]; routes: string[]; publicApis: string[]; relatedTests: string[]; sensitiveFiles: string[]; policyViolations: string[] }; error?: string } }[];
+  patches: { description: string; touches: string[]; unifiedDiff?: string; status?: "suggested" | "preview" | "ready" | "blocked" | "applied" | "rejected"; preflight?: { status: "ready" | "blocked"; attempts: number; error?: string }; changeSetId?: string; issueIds?: string[]; verification?: { passed: boolean; fixedIssueIds: string[]; beforeIssueCount: number; afterIssueCount: number; introducedSevere: number; checks: { eslint: "passed" | "failed"; typescript: "passed" | "failed"; relatedTests: "passed" | "failed" | "not-found" }; relatedTests: string[]; attempts: number; confidence?: { diagnosis: number; patch: number; behavioral: number; status: "green" | "yellow" | "red"; reasons: string[] }; impact?: { importers: string[]; routes: string[]; publicApis: string[]; relatedTests: string[]; sensitiveFiles: string[]; policyViolations: string[] }; sonar?: SonarSummary & { introducedSevere: number }; error?: string } }[];
   problemCards?: Array<{ id: string; title: string; explanation: string; technicalExplanation: string; rootCause: string; location: string; affectedFiles: string[]; dependencies: string[]; importance: string; proposedFix?: string; risk: "low" | "medium" | "high"; requiredValidation: string[]; status: "found" | "fixing" | "ready-for-approval" | "resolved" | "blocked"; changeSetId?: string }>;
   changeSets?: Array<{ id: string; description: string; issueIds: string[]; touches: string[]; status: "ready-for-approval" | "resolved" | "blocked"; result?: ReportData["patches"][number]["verification"] }>;
   recommendations: string[];
@@ -103,7 +104,7 @@ export interface ReportData {
     advisoryRecommendations: number;
   };
   verification: { passed: boolean; errors: string[] };
-  agent?: { mode: string; provider: string; model: string; analysisModel?: string; requests: number; estimatedTokens?: number; estimatedCostUsd?: number; durationMs: number; changedFiles: number };
+  agent?: { mode: string; provider: string; model: string; analysisModel?: string; requests: number; estimatedTokens?: number; estimatedCostUsd?: number; durationMs: number; changedFiles: number; specialists?: number; specialistStrategy?: string };
   qualityGate?: QualityGateResult;
   lighthouse?: LighthouseReport; // ← فیلد جدید (اختیاری)
   seoLab?: SeoHealth;
@@ -112,6 +113,7 @@ export interface ReportData {
   testHealth?: { score: number; testedSources: number; totalSources: number; gaps: unknown[] };
   performanceLab?: { performance: number; bundle: number };
   rootCauseGroups?: RootCauseGroup[];
+  sonar?: SonarSummary;
 }
 
 export function buildSummary(
