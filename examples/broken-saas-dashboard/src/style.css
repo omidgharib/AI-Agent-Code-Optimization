@@ -1,0 +1,26 @@
+:root { color: #d8f7e7; background: #03100c; font-family: Inter, system-ui, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, input { font: inherit; }
+#app { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 40px 0 80px; }
+.hero { display: flex; justify-content: space-between; align-items: center; min-height: 260px; padding: 40px; border: 1px solid #164c39; border-radius: 24px; background: radial-gradient(circle at top right, #155b43, #071a14 58%); }
+.hero h1 { max-width: 680px; margin: 8px 0; font-size: clamp(2.6rem, 7vw, 5.7rem); line-height: .92; letter-spacing: -.07em; }
+.hero p { color: #77a18f; }
+.eyebrow { font-size: .75rem; letter-spacing: .22em; }
+.icon-button { width: 52px; height: 52px; border: 1px solid #2b8061; border-radius: 50%; color: #03100c; background: #47e6a1; cursor: pointer; }
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 18px 0; }
+.metrics article, .panel { border: 1px solid #153d30; border-radius: 18px; background: #071611; }
+.metrics article { padding: 24px; }
+.metrics span { display: block; color: #537a69; }
+.metrics strong { display: block; margin-top: 12px; font-size: 2.2rem; }
+.panel { padding: 28px; }
+.panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+input { min-width: 260px; padding: 12px 16px; border: 1px solid #275442; border-radius: 10px; color: inherit; background: #0a2119; }
+.account-grid { display: grid; gap: 10px; margin-top: 22px; }
+.account-card { display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 16px; padding: 16px; border: 1px solid #12392b; border-radius: 14px; cursor: pointer; }
+.account-card:hover { background: #0d281e; }
+.account-card img { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; }
+.account-card h3, .account-card p { margin: 0; }
+.account-card p { color: #486d5d; }
+.plan { padding: 6px 10px; border-radius: 999px; color: #56dba1; background: #103426; }
+@media (max-width: 700px) { .metrics { grid-template-columns: 1fr; } .hero { padding: 24px; } .panel-heading { align-items: stretch; flex-direction: column; } input { min-width: 0; width: 100%; } }

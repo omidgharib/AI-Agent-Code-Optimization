@@ -1,0 +1,16 @@
+{
+  "name": "broken-saas-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4180",
+    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^5.4.19",
+    "vitest": "^2.1.9"
+  }
+}
