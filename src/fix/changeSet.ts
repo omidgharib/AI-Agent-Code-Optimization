@@ -160,18 +160,21 @@ export async function prepareChangeSet(
     if (changedLines > effectivePolicy.maxLinesPerChangeSet) impact.policyViolations.push(`policy allows at most ${effectivePolicy.maxLinesPerChangeSet} changed lines per change set`);
     const blockingIntroduced = introduced.filter((issue) => issue.tool !== "sonar" || introducedSonar.includes(issue));
     const confidence = scoreDecision({ issues: selectedCodeIssues, fixedSelected: selectedCodeIssues.length - unresolvedSelected.length, selected: selectedCodeIssues.length, introducedSevere: blockingIntroduced.length, tests: tests.status, impact });
-    // Apply is deliberately stricter than patch generation: a yellow preview
-    // remains useful evidence, but it is not an approval-ready change set.
-    const passed = confidence.status === "green";
-    const error = impact.policyViolations.length
+    // Coverage is informational, not a readiness gate: an incomplete-but-safe
+    // subset of a request is still approval-worthy. The untouched issues stay
+    // visible in the report and are handled by a later iteration — exactly the
+    // partial-progress model apply mode already uses. Only new blocking
+    // findings, policy violations, and failing related tests block approval.
+    const policyBlocked = impact.policyViolations.length > 0;
+    const testsBlocked = tests.status === "failed";
+    const passed = !policyBlocked && !testsBlocked && blockingIntroduced.length === 0;
+    const error = policyBlocked
       ? `Policy blocked change set: ${impact.policyViolations.join("; ")}`
       : introducedSonar.length
       ? `Sonar preflight introduced ${introducedSonar.length} high/critical bug or vulnerability: ${introducedSonar.map((issue) => `${issue.ruleId ?? "sonar"} in ${issue.location?.filePath ?? "unknown"}:${issue.location?.startLine ?? 1}`).join("; ")}`
       : blockingIntroduced.length
       ? `Introduced ${blockingIntroduced.length} high/critical issue(s)`
-      : unresolvedSelected.length
-        ? `Preview resolved ${selectedCodeIssues.length - unresolvedSelected.length}/${selectedCodeIssues.length} selected issue(s); the AI response did not cover every selected issue`
-        : tests.error;
+      : tests.error;
     return {
       ...common,
       verification: {

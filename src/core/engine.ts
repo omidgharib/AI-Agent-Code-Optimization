@@ -24,7 +24,7 @@ import {
 } from "../fix/llmClient";
 import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
 import { preflightSuggestedPatch } from "../fix/patchPreflight";
-import { prepareChangeSet } from "../fix/changeSet";
+import { issueVerificationFingerprint, prepareChangeSet } from "../fix/changeSet";
 import { PatchTransaction } from "../fix/patchTransaction";
 import { planSpecialistWork, specialistPromptContext } from "../fix/specialistPlanner";
 import { writeReport } from "../report/report";
@@ -499,12 +499,15 @@ export async function runAudit(
         // repair the failing members with repairPatch (same mechanism as apply
         // mode) and re-verify the entire change set.
         if (suggestedChangeSet && !suggestedChangeSet.verification.passed) {
-          let repairedPatches: FixResponse["patches"] | undefined;
+          const diffPatches = fixResponse.patches.filter((patch) => patch.unifiedDiff?.trim());
+          const repairedByIndex = new Map<number, FixResponse["patches"][number]>();
+          const repairFailures = new Map<number, string>();
           if (config.patchRetries > 0) {
-            repairedPatches = [];
             logger.warn("Change set failed verification — attempting to repair each failing patch before blocking: " + (suggestedChangeSet.verification.error ?? "verification failed"));
+            let diffIndex = 0;
             for (const patch of fixResponse.patches) {
-              if (!patch.unifiedDiff?.trim()) { repairedPatches.push(patch); continue; }
+              if (!patch.unifiedDiff?.trim()) continue;
+              const index = diffIndex++;
               let candidate = patch;
               let probe = await preflightSuggestedPatch(repoRoot, candidate.unifiedDiff, previousFileIssues);
               for (let attempt = 1; !probe.success && attempt <= config.patchRetries; attempt++) {
@@ -525,15 +528,15 @@ export async function runAudit(
                   break;
                 }
               }
-              if (probe.success) repairedPatches.push(candidate);
+              if (probe.success) repairedByIndex.set(index, candidate);
+              else repairFailures.set(index, probe.error ?? "Preflight failed");
             }
           }
-          const repairedDiffs = repairedPatches ? repairedPatches.filter((p) => p.unifiedDiff?.trim()).length : 0;
-          const allReady = repairedPatches !== undefined && repairedDiffs === fixResponse.patches.filter((p) => p.unifiedDiff?.trim()).length;
+          const allReady = repairedByIndex.size === diffPatches.length;
           const revalidated: Awaited<ReturnType<typeof prepareChangeSet>> | undefined = allReady
             ? await prepareChangeSet(
                 repoRoot,
-                repairedPatches!.filter((patch) => patch.unifiedDiff?.trim()),
+                diffPatches.map((_, index) => repairedByIndex.get(index)!),
                 previousFileIssues,
                 selected.map((issue) => issue.id),
                 config.patchRetries,
@@ -541,36 +544,86 @@ export async function runAudit(
                 sonarConfig,
               )
             : undefined;
+
+          const changeSetVerification = (cs: NonNullable<typeof suggestedChangeSet>) => ({
+            passed: cs.verification.passed,
+            fixedIssueIds: cs.verification.fixedIssueIds,
+            beforeIssueCount: cs.verification.beforeIssueCount,
+            afterIssueCount: cs.verification.afterIssueCount,
+            introducedSevere: cs.verification.introducedSevere,
+            checks: cs.verification.checks,
+            relatedTests: cs.verification.relatedTests,
+            attempts: cs.verification.attempts,
+            confidence: cs.verification.confidence,
+            impact: cs.verification.impact,
+            sonar: cs.verification.sonar,
+            ...(cs.verification.error ? { error: cs.verification.error } : {}),
+          });
+
+          let publishedPartial = false;
           if (revalidated?.verification.passed) {
-            let repairedIndex = 0;
+            let diffIndex = 0;
             for (const patch of fixResponse.patches) {
               if (!patch.unifiedDiff?.trim()) continue;
-              const repaired = repairedPatches![repairedIndex];
-              repairedIndex++;
+              const repaired = repairedByIndex.get(diffIndex++);
               if (repaired && repaired !== patch) {
                 patch.unifiedDiff = repaired.unifiedDiff;
                 patch.description = repaired.description;
                 patch.touches = repaired.touches;
               }
-              patch.verification = {
-                passed: revalidated.verification.passed,
-                fixedIssueIds: revalidated.verification.fixedIssueIds,
-                beforeIssueCount: revalidated.verification.beforeIssueCount,
-                afterIssueCount: revalidated.verification.afterIssueCount,
-                introducedSevere: revalidated.verification.introducedSevere,
-                checks: revalidated.verification.checks,
-                relatedTests: revalidated.verification.relatedTests,
-                attempts: revalidated.verification.attempts,
-                confidence: revalidated.verification.confidence,
-                impact: revalidated.verification.impact,
-                sonar: revalidated.verification.sonar,
-                ...(revalidated.verification.error ? { error: revalidated.verification.error } : {}),
-              };
+              patch.verification = changeSetVerification(revalidated);
             }
             suggestedChangeSet = revalidated;
             // Fall through: the per-patch loop below publishes the repaired
             // (now verified) candidate diffs as "ready" patches.
-          } else {
+          } else if (repairedByIndex.size > 0 && repairedByIndex.size < diffPatches.length) {
+            // One or more members could not be repaired (e.g. a hunk that
+            // keeps conflicting with the current source). Mirror apply mode's
+            // per-iteration progress: re-verify the repairable members as
+            // their own change set and publish them as READY, blocking only
+            // the members that keep failing instead of all-or-nothing.
+            const subsetDiffs = diffPatches.filter((_, index) => repairedByIndex.has(index));
+            const subset = await prepareChangeSet(
+              repoRoot,
+              subsetDiffs,
+              previousFileIssues,
+              selected.map((issue) => issue.id),
+              config.patchRetries,
+              projectPolicy,
+              sonarConfig,
+            );
+            if (subset?.verification.passed) {
+              publishedPartial = true;
+              suggestedChangeSet = subset;
+              let diffIndex = 0;
+              for (const patch of fixResponse.patches) {
+                if (!patch.unifiedDiff?.trim()) continue;
+                const repaired = repairedByIndex.get(diffIndex);
+                const ready = Boolean(repaired);
+                if (repaired && repaired !== patch) {
+                  patch.unifiedDiff = repaired.unifiedDiff;
+                  patch.description = repaired.description;
+                  patch.touches = repaired.touches;
+                }
+                patch.changeSetId = subset.id;
+                patch.issueIds = selected.map((issue) => issue.id);
+                patch.verification = changeSetVerification(subset);
+                Object.assign(patch, {
+                  preflight: ready
+                    ? { status: "ready" as const, attempts: 0 }
+                    : { status: "blocked" as const, attempts: config.patchRetries, error: repairFailures.get(diffIndex) ?? "Preflight failed" },
+                });
+                await bindPatchToPreview(repoRoot, patch);
+                allPatches.push(patch);
+                const patchTarget = patch.touches[0] ?? getDiffTargetPath(patch.unifiedDiff);
+                if (patchTarget && !changedFiles.has(patchTarget) && changedFiles.size < config.maxChangedFiles) changedFiles.add(patchTarget);
+                logger.info(ready ? `Patch ready: ${patch.description}` : `Patch blocked: ${patch.description} (${repairFailures.get(diffIndex) ?? "preflight failed"})`);
+                diffIndex++;
+              }
+              logger.warn(`${repairedByIndex.size} of ${diffPatches.length} change-set members ready; blocked: ${[...repairFailures.values()].join("; ")}`);
+            }
+          }
+          if (!revalidated?.verification.passed && !publishedPartial) {
             const finalError =
               revalidated?.verification.error ??
               suggestedChangeSet.verification.error ??
@@ -589,6 +642,7 @@ export async function runAudit(
             logger.warn("Change set blocked: " + finalError);
             break;
           }
+          if (publishedPartial) break;
         }
 
         let anyApplied = false;
@@ -675,10 +729,16 @@ export async function runAudit(
             config.severity,
           );
           const newPrioritized = prioritize(newIssues);
-          const previousIds = new Set(previousFileIssues.map((issue) => issue.id));
+          // Compare with the line-agnostic fingerprint: a fix legitimately
+          // shifts lines (e.g. deleting an import above a pre-existing type
+          // error), so the same problem must not be mistaken for a newly
+          // introduced regression just because its ID embeds the old line.
+          const previousFps = new Set(
+            previousFileIssues.map(issueVerificationFingerprint),
+          );
           const introducedSevere = newPrioritized.filter(
             (issue) =>
-              !previousIds.has(issue.id) &&
+              !previousFps.has(issueVerificationFingerprint(issue)) &&
               (issue.severity === "high" || issue.severity === "critical"),
           );
           const improved =
