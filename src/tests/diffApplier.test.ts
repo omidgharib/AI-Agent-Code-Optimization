@@ -78,6 +78,27 @@ describe("applyDiff", () => {
     expect(existsSync(join(dir, ".ai-auditor-backup"))).toBe(false);
   });
 
+  it("relocates an exact hunk when only the model's line number is stale", async () => {
+    const p = join(dir, "src", "index.js");
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, `first\nconst value = 1;\nlast\n`);
+    const diff = `--- a/src/index.js\n+++ b/src/index.js\n@@ -1,1 +1,1 @@\n-const value = 1;\n+const value = 2;\n`;
+    const result = await applyDiff(diff, dir, false);
+    expect(result.success).toBe(true);
+    expect(readFileSync(p, "utf8")).toBe(`first\nconst value = 2;\nlast\n`);
+  });
+
+  it("does not relocate a hunk when its context is ambiguous", async () => {
+    const p = join(dir, "src", "index.js");
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, `same\nmiddle\nsame\n`);
+    const diff = `--- a/src/index.js\n+++ b/src/index.js\n@@ -2,1 +2,1 @@\n-same\n+changed\n`;
+    const result = await applyDiff(diff, dir, false);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/occurs 2 times/);
+    expect(readFileSync(p, "utf8")).toBe(`same\nmiddle\nsame\n`);
+  });
+
   it("creates a new file when the hunk has no old lines and the file is absent", async () => {
     const diff = `--- /dev/null
 +++ b/src/new.js
@@ -131,6 +152,23 @@ rename to eslint.config.mjs
 diff --git a/src/b.js b/src/b.js
 @@ -1,1 +1,2 @@
 +y
+`;
+    const result = await applyDiff(diff, dir, false);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/multiple files/);
+  });
+
+  it("rejects multi-file diffs that omit diff --git separators", async () => {
+    const diff = `--- a/src/a.js
++++ b/src/a.js
+@@ -1,1 +1,1 @@
+-a
++A
+--- a/src/b.js
++++ b/src/b.js
+@@ -1,1 +1,1 @@
+-b
++B
 `;
     const result = await applyDiff(diff, dir, false);
     expect(result.success).toBe(false);

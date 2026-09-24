@@ -517,7 +517,9 @@ export async function runAudit(
                 if (target) { try { contents[target] = await fs.readFile(resolve(repoRoot, target), "utf8"); } catch { /* new file */ } }
                 try {
                   claimAiRequest(JSON.stringify({ selected, context, candidate, contents }).length);
-                  const rep = await repairPatch({ baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, provider: config.provider }, { repoRoot, issues: selected, context, constraints: { maxFilesChanged: config.maxChangedFiles, preferMinimalDiff: true, doNotChangePublicAPI: false, keepFormatting: true } }, candidate, probe.error ?? "unknown preflight error", contents, trace);
+                  const repairIssues = target ? selected.filter((issue) => issue.location?.filePath === target) : selected;
+                  const repairContext = target ? context.filter((entry) => entry.filePath === target || entry.filePath === "package.json") : context;
+                  const rep = await repairPatch({ baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, provider: config.provider }, { repoRoot, issues: repairIssues, context: repairContext, constraints: { maxFilesChanged: 1, preferMinimalDiff: true, doNotChangePublicAPI: false, keepFormatting: true } }, candidate, probe.error ?? "unknown preflight error", contents, trace);
                   if (!rep.patches[0]?.unifiedDiff) break;
                   candidate = rep.patches[0];
                   probe = await preflightSuggestedPatch(repoRoot, candidate.unifiedDiff, previousFileIssues);
@@ -582,7 +584,10 @@ export async function runAudit(
             // per-iteration progress: re-verify the repairable members as
             // their own change set and publish them as READY, blocking only
             // the members that keep failing instead of all-or-nothing.
-            const subsetDiffs = diffPatches.filter((_, index) => repairedByIndex.has(index));
+            const subsetDiffs = diffPatches.flatMap((_, index) => {
+              const repaired = repairedByIndex.get(index);
+              return repaired ? [repaired] : [];
+            });
             const subset = await prepareChangeSet(
               repoRoot,
               subsetDiffs,
@@ -674,7 +679,9 @@ export async function runAudit(
             const contents: Record<string, string> = {}; const target = getDiffTargetPath(candidate.unifiedDiff); if (target) { try { contents[target] = await fs.readFile(resolve(repoRoot, target), "utf8"); } catch { /* new file */ } }
             try {
               claimAiRequest(JSON.stringify({ selected, context, candidate, contents }).length);
-              const rep = await repairPatch({ baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, provider: config.provider }, { repoRoot, issues: selected, context, constraints: { maxFilesChanged: config.maxChangedFiles, preferMinimalDiff: true, doNotChangePublicAPI: false, keepFormatting: true } }, candidate, result.error ?? "unknown preflight error", contents, trace);
+              const repairIssues = target ? selected.filter((issue) => issue.location?.filePath === target) : selected;
+              const repairContext = target ? context.filter((entry) => entry.filePath === target || entry.filePath === "package.json") : context;
+              const rep = await repairPatch({ baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, provider: config.provider }, { repoRoot, issues: repairIssues, context: repairContext, constraints: { maxFilesChanged: 1, preferMinimalDiff: true, doNotChangePublicAPI: false, keepFormatting: true } }, candidate, result.error ?? "unknown preflight error", contents, trace);
               if (!rep.patches[0]?.unifiedDiff) break; candidate = rep.patches[0];
               if (config.agentMode !== "apply") result = await preflightSuggestedPatch(repoRoot, candidate.unifiedDiff, previousFileIssues);
               else { await transaction.capture(candidate.unifiedDiff); await transaction.verifyUnchanged(candidate.unifiedDiff); result = await applyDiff(candidate.unifiedDiff, repoRoot, config.dryRun); }

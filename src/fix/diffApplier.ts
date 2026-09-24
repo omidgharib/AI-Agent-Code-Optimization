@@ -80,6 +80,7 @@ function parseHunks(
   const lines = diff.split("\n");
   let filePath = "";
   let fileCount = 0;
+  const targetFiles = new Set<string>();
   let sawRename = false;
   const hunks: Hunk[] = [];
   let current: Hunk | null = null;
@@ -94,6 +95,7 @@ function parseHunks(
       sawRename = true;
     } else if (line.startsWith("+++ ")) {
       filePath = line.slice(4).replace(/^b\//, "").trim();
+      if (filePath && filePath !== "/dev/null") targetFiles.add(filePath);
     } else if (line.startsWith("@@ ")) {
       const m = /@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
       if (!m) continue;
@@ -116,7 +118,7 @@ function parseHunks(
   }
   if (current) hunks.push(current);
   return filePath || hunks.length > 0 || sawRename
-    ? { filePath, hunks, fileCount, renameOnly: sawRename && hunks.length === 0 }
+    ? { filePath, hunks, fileCount: Math.max(fileCount, targetFiles.size), renameOnly: sawRename && hunks.length === 0 }
     : null;
 }
 
@@ -209,7 +211,7 @@ export async function applyDiff(
   let offset = 0;
 
   for (const hunk of hunks) {
-    const start = hunk.oldStart - 1 + offset;
+    let start = hunk.oldStart - 1 + offset;
     // Negative or past-EOF starts must fail loudly; splice() with a negative
     // index would silently insert lines at the wrong place.
     if (start < 0 || start > fileLines.length) {
@@ -218,17 +220,33 @@ export async function applyDiff(
         error: `Hunk mismatch at line ${hunk.oldStart}: hunk targets line ${start + 1} but the file only has ${fileLines.length} lines. The model's context lines may be stale — check ${filePath}`,
       };
     }
-    const actual = fileLines
+    let actual = fileLines
       .slice(start, start + hunk.oldLines.length)
       .join("\n");
     const expected = hunk.oldLines.join("\n");
     if (actual !== expected) {
-      return {
-        success: false,
-        error:
-          `Hunk mismatch at line ${hunk.oldStart}: expected "${expected.slice(0, 80) || "∅"}" but the file has "${actual.slice(0, 80) || "∅"}". ` +
-          `The model's context lines may be stale — check ${filePath}`,
-      };
+      // Unified-diff line numbers from LLMs are often off by a line or two.
+      // Relocate only when the complete old hunk occurs exactly once; this is
+      // deterministic and cannot silently choose between ambiguous matches.
+      const matches: number[] = [];
+      if (hunk.oldLines.length > 0) {
+        for (let candidate = 0; candidate + hunk.oldLines.length <= fileLines.length; candidate++) {
+          if (fileLines.slice(candidate, candidate + hunk.oldLines.length).join("\n") === expected) matches.push(candidate);
+        }
+      }
+      if (matches.length === 1) {
+        start = matches[0];
+        actual = expected;
+      } else {
+        return {
+          success: false,
+          error:
+            `Hunk mismatch at line ${hunk.oldStart}: expected "${expected.slice(0, 80) || "∅"}" but the file has "${actual.slice(0, 80) || "∅"}". ` +
+            (matches.length > 1
+              ? `The same context occurs ${matches.length} times, so it cannot be relocated safely — check ${filePath}`
+              : `The model's context lines may be stale — check ${filePath}`),
+        };
+      }
     }
     fileLines.splice(start, hunk.oldLines.length, ...hunk.newLines);
     offset += hunk.newLines.length - hunk.oldLines.length;

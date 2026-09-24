@@ -7,6 +7,7 @@ import { FixResponseSchema } from "../core/schemas";
 import { buildChatUrl } from "../core/models";
 import { describeNetworkError, isTimeoutLike } from "../core/errorDiagnosis";
 import { logger } from "../core/logger";
+import { getDiffTargetPath } from "./diffApplier";
 
 export interface LLMClientConfig {
   baseUrl: string;
@@ -74,6 +75,39 @@ function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
+/**
+ * Models sometimes ignore the one-file-per-patch contract and concatenate
+ * several ordinary unified diffs without `diff --git` separators.  The
+ * low-level applier is deliberately single-file, so recover the response at
+ * the trust boundary instead of letting hunks from one file be interpreted as
+ * belonging to the final +++ target.
+ */
+export function splitMultiFilePatch<T extends { description: string; unifiedDiff: string; touches: string[] }>(patch: T): T[] {
+  const lines = patch.unifiedDiff.replace(/\r\n/g, "\n").split("\n");
+  const starts: number[] = [];
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (lines[i].startsWith("--- ") && lines[i + 1].startsWith("+++ ")) starts.push(i);
+  }
+  if (starts.length <= 1) return [patch];
+
+  return starts.map((start, index) => {
+    const nextStart = starts[index + 1];
+    const end = nextStart !== undefined && nextStart > 0 && lines[nextStart - 1].startsWith("diff --git ")
+      ? nextStart - 1
+      : nextStart ?? lines.length;
+    let sectionStart = start;
+    if (start > 0 && lines[start - 1].startsWith("diff --git ")) sectionStart--;
+    const unifiedDiff = lines.slice(sectionStart, end).join("\n").replace(/\n+$/, "") + "\n";
+    const target = lines[start + 1].slice(4).replace(/^b\//, "").trim();
+    return {
+      ...patch,
+      description: starts.length > 1 ? `${patch.description} (${target})` : patch.description,
+      unifiedDiff,
+      touches: target ? [target] : [],
+    };
+  });
+}
+
 // Normalize anything near FixResponse (bare patch object / patches array /
 // {fixes:[{filePath,diff}]} style) into the wrapper shape before schema validation.
 // Exported for tests.
@@ -90,21 +124,21 @@ export function coerceFixResponse(raw: unknown): unknown {
           typeof p.diff === "string" ||
           typeof p.patch === "string",
       )
-      .map((p) => {
+      .flatMap((p) => {
         const diff =
           asString(p.unifiedDiff) ?? asString(p.diff) ?? asString(p.patch);
-        return {
+        return splitMultiFilePatch({
           description:
             asString(p.description) ??
             asString(p.message) ??
             (diff as string).split("\n")[0].slice(0, 80),
-          unifiedDiff: diff,
+          unifiedDiff: diff as string,
           touches: Array.isArray(p.touches)
             ? p.touches.filter((t): t is string => typeof t === "string")
             : asString(p.filePath)
               ? [asString(p.filePath) as string]
               : [],
-        };
+        });
       });
     return { patches, notes: [] };
   }
@@ -126,7 +160,7 @@ export function coerceFixResponse(raw: unknown): unknown {
             typeof a.diff === "string" ||
             (typeof a.action === "string" && typeof a.file === "string"),
         )
-        .map((a) => {
+        .flatMap((a) => {
           const diff = asString(a.diff) ?? "";
           // The proxy returns bare unified diffs (no `diff --git` / `--- /`+ /`
           // `+++ /` wrapper). If headers are missing, synthesize them so the
@@ -137,14 +171,14 @@ export function coerceFixResponse(raw: unknown): unknown {
             !hasHeaders && file
               ? `--- a/${file}\n+++ b/${file}\n${diff}`
               : diff;
-          return {
+          return splitMultiFilePatch({
             description:
               asString(a.description) ??
               asString(a.message) ??
               `Fix in ${file ?? "?"}`,
             unifiedDiff: fullDiff,
             touches: file ? [file] : [],
-          };
+          });
         });
       return {
         patches,
@@ -168,18 +202,18 @@ export function coerceFixResponse(raw: unknown): unknown {
             typeof f.unifiedDiff === "string" ||
             typeof f.patch === "string",
         )
-        .map((f) => {
+        .flatMap((f) => {
           const diff =
             asString(f.unifiedDiff) ?? asString(f.diff) ?? asString(f.patch);
-          return {
+          return splitMultiFilePatch({
             description:
               asString(f.description) ??
               `Fix in ${asString(f.filePath) ?? "?"}`,
-            unifiedDiff: diff,
+            unifiedDiff: diff as string,
             touches: asString(f.filePath)
               ? [asString(f.filePath) as string]
               : [],
-          };
+          });
         });
       return {
         patches,
@@ -204,19 +238,19 @@ export function coerceFixResponse(raw: unknown): unknown {
             typeof c.unifiedDiff === "string" ||
             typeof c.patch === "string",
         )
-        .map((c) => {
+        .flatMap((c) => {
           const diff =
             asString(c.unifiedDiff) ?? asString(c.diff) ?? asString(c.patch);
-          return {
+          return splitMultiFilePatch({
             description:
               asString(c.description) ??
               asString(c.message) ??
               `Fix in ${asString(c.filePath) ?? "?"}`,
-            unifiedDiff: diff,
+            unifiedDiff: diff as string,
             touches: asString(c.filePath)
               ? [asString(c.filePath) as string]
               : [],
-          };
+          });
         });
       return {
         patches,
@@ -641,7 +675,12 @@ export async function repairPatch(
         result.data,
         Date.now() - t0,
       );
-    return result.data;
+    const failedTarget = getDiffTargetPath(failedPatch.unifiedDiff);
+    if (!failedTarget) return result.data;
+    const matching = result.data.patches.find((patch) =>
+      getDiffTargetPath(patch.unifiedDiff) === failedTarget || patch.touches.includes(failedTarget),
+    );
+    return { ...result.data, patches: matching ? [matching] : [] };
   } catch (e) {
     const rawContent = (e as { rawContent?: string }).rawContent;
     if (trace)

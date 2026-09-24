@@ -134,7 +134,7 @@ function App() {
   const startAudit = async (fixRequested: boolean) => {
     setError("");
     try {
-      const response = await fetch("/api/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectPath, url: auditUrl, fix: fixRequested, dryRun: fixRequested ? true : agentMode !== "apply", agentMode: fixRequested ? "dry-run" : undefined, severity, provider, model, baseUrl, apiKey: provider === "aifa" ? apiKey : undefined, sonarEnabled, sonarHostUrl, sonarProjectKey, sonarToken: sonarToken || undefined, analysisModel: model, issueIds: [...selectedIssueIds], maxAiRequests: 10, maxAgentSeconds: 300, maxChangedFiles: 5, maxAgentTokens: 100000, maxCritical: 0, maxHigh: 1000, sarif: true }) });
+      const response = await fetch("/api/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectPath, url: auditUrl, fix: fixRequested, dryRun: fixRequested ? agentMode !== "apply" : true, agentMode: fixRequested ? agentMode : undefined, severity, provider, model, baseUrl, apiKey: provider === "aifa" ? apiKey : undefined, sonarEnabled, sonarHostUrl, sonarProjectKey, sonarToken: sonarToken || undefined, analysisModel: model, issueIds: [...selectedIssueIds], maxAiRequests: 10, maxAgentSeconds: 300, maxChangedFiles: 5, maxAgentTokens: 100000, maxCritical: 0, maxHigh: 1000, sarif: true }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || (lang === "fa" ? "شروع ممیزی ممکن نشد" : "Could not start audit"));
       connect(data);

@@ -129,6 +129,40 @@ describe("coerceFixResponse (ForgetMeAI actions format)", () => {
     expect(coerced.patches[0].description).toBeTruthy();
   });
 
+  it("splits a model patch containing multiple file diffs", () => {
+    const raw = {
+      patches: [{
+        description: "Fix storefront issues",
+        touches: ["src/analytics.js", "src/main.ts"],
+        unifiedDiff: "--- a/src/analytics.js\n+++ b/src/analytics.js\n@@ -1,1 +1,1 @@\n-var visits = 0;\n+let visits = 0;\n--- a/src/main.ts\n+++ b/src/main.ts\n@@ -1,1 +1,1 @@\n-var category = 'all';\n+let category = 'all';\n",
+      }],
+      notes: [],
+    };
+    const coerced = coerceFixResponse(raw) as {
+      patches: Array<{ unifiedDiff: string; touches: string[] }>;
+    };
+    expect(coerced.patches).toHaveLength(2);
+    expect(coerced.patches.map((patch) => patch.touches)).toEqual([
+      ["src/analytics.js"],
+      ["src/main.ts"],
+    ]);
+    expect(coerced.patches[0].unifiedDiff).not.toContain("src/main.ts");
+    expect(coerced.patches[1].unifiedDiff).not.toContain("src/analytics.js");
+  });
+
+  it("keeps each diff --git header with its own split patch", () => {
+    const raw = [{
+      description: "two files",
+      unifiedDiff: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-a\n+A\ndiff --git a/b.ts b/b.ts\n--- a/b.ts\n+++ b/b.ts\n@@ -1 +1 @@\n-b\n+B\n",
+      touches: ["a.ts", "b.ts"],
+    }];
+    const coerced = coerceFixResponse(raw) as { patches: Array<{ unifiedDiff: string }> };
+    expect(coerced.patches).toHaveLength(2);
+    expect(coerced.patches[0].unifiedDiff).toMatch(/^diff --git a\/a\.ts b\/a\.ts/);
+    expect(coerced.patches[0].unifiedDiff).not.toContain("b/b.ts");
+    expect(coerced.patches[1].unifiedDiff).toMatch(/^diff --git a\/b\.ts b\/b\.ts/);
+  });
+
   it("accepts a bare single-diff object under the patch key (repair responses)", () => {
     const raw = {
       patch:
