@@ -1,0 +1,1258 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ai-auditor",
+          "informationUri": "https://github.com/",
+          "rules": [
+            {
+              "id": "playwright/page-error",
+              "name": "page-error",
+              "shortDescription": {
+                "text": "1 uncaught page error(s) occurred"
+              }
+            },
+            {
+              "id": "eslint/no-eval",
+              "name": "no-eval",
+              "shortDescription": {
+                "text": "eval can be harmful."
+              }
+            },
+            {
+              "id": "playwright/console-error",
+              "name": "console-error",
+              "shortDescription": {
+                "text": "1 browser console error(s) occurred"
+              }
+            },
+            {
+              "id": "lighthouse/uses-text-compression",
+              "name": "uses-text-compression",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Enable text compression: Text-based resources should be served with compression (gzip, deflate or brotli) to minimize total network bytes. [Learn more about text compression](https://developer.chrome.com/docs/lighthouse/performance/uses-text-compression/)."
+              }
+            },
+            {
+              "id": "eslint/@typescript-eslint/no-unused-vars",
+              "name": "@typescript-eslint/no-unused-vars",
+              "shortDescription": {
+                "text": "'unusedTrackerOption' is assigned a value but never used."
+              }
+            },
+            {
+              "id": "eslint/no-debugger",
+              "name": "no-debugger",
+              "shortDescription": {
+                "text": "Unexpected 'debugger' statement."
+              }
+            },
+            {
+              "id": "tsc/TS2322",
+              "name": "TS2322",
+              "shortDescription": {
+                "text": "Type '({ id: number; name: string; price: string; image: string; } | { id: number; name: string; price: number; image: string; })[]' is not assignable to type 'Product[]'."
+              }
+            },
+            {
+              "id": "lighthouse/button-name",
+              "name": "button-name",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Buttons do not have an accessible name: When a button doesn't have an accessible name, screen readers announce it as \"button\", making it unusable for users who rely on screen readers. [Learn how to make buttons more accessible](https://dequeuniversity.com/rules/axe/4.10/button-name)."
+              }
+            },
+            {
+              "id": "lighthouse/errors-in-console",
+              "name": "errors-in-console",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Browser errors were logged to the console: Errors logged to the console indicate unresolved problems. They can come from network request failures and other browser concerns. [Learn more about this errors in console diagnostic audit](https://developer.chrome.com/docs/lighthouse/best-practices/errors-in-console/)"
+              }
+            },
+            {
+              "id": "lighthouse/robots-txt",
+              "name": "robots-txt",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] robots.txt is not valid: If your robots.txt file is malformed, crawlers may not be able to understand how you want your website to be crawled or indexed. [Learn more about robots.txt](https://developer.chrome.com/docs/lighthouse/seo/invalid-robots-txt/)."
+              }
+            },
+            {
+              "id": "lighthouse/unminified-javascript",
+              "name": "unminified-javascript",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Minify JavaScript: Minifying JavaScript files can reduce payload sizes and script parse time. [Learn how to minify JavaScript](https://developer.chrome.com/docs/lighthouse/performance/unminified-javascript/)."
+              }
+            },
+            {
+              "id": "lighthouse/html-has-lang",
+              "name": "html-has-lang",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] `<html>` element does not have a `[lang]` attribute: If a page doesn't specify a `lang` attribute, a screen reader assumes that the page is in the default language that the user chose when setting up the screen reader. If the page isn't actually in the default language, then the screen reader might not announce the page's text correctly. [Learn more about the `lang` attribute](https://dequeuniversity.com/rules/axe/4.10/html-has-lang)."
+              }
+            },
+            {
+              "id": "lighthouse/color-contrast",
+              "name": "color-contrast",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Background and foreground colors do not have a sufficient contrast ratio.: Low-contrast text is difficult or impossible for many users to read. [Learn how to provide sufficient color contrast](https://dequeuniversity.com/rules/axe/4.10/color-contrast)."
+              }
+            },
+            {
+              "id": "lighthouse/meta-description",
+              "name": "meta-description",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Document does not have a meta description: Meta descriptions may be included in search results to concisely summarize page content. [Learn more about the meta description](https://developer.chrome.com/docs/lighthouse/seo/meta-description/)."
+              }
+            },
+            {
+              "id": "lighthouse/max-potential-fid",
+              "name": "max-potential-fid",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Max Potential First Input Delay: The maximum potential First Input Delay that your users could experience is the duration of the longest task. [Learn more about the Maximum Potential First Input Delay metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-max-potential-fid/)."
+              }
+            },
+            {
+              "id": "tsc/TS6133",
+              "name": "TS6133",
+              "shortDescription": {
+                "text": "'unusedPromotion' is declared but its value is never read."
+              }
+            },
+            {
+              "id": "eslint/no-var",
+              "name": "no-var",
+              "shortDescription": {
+                "text": "Unexpected var, use let or const instead."
+              }
+            },
+            {
+              "id": "eslint/prefer-const",
+              "name": "prefer-const",
+              "shortDescription": {
+                "text": "'trackerName' is never reassigned. Use 'const' instead."
+              }
+            },
+            {
+              "id": "playwright/html-lang",
+              "name": "html-lang",
+              "shortDescription": {
+                "text": "HTML document has no lang attribute"
+              }
+            },
+            {
+              "id": "lighthouse/first-contentful-paint",
+              "name": "first-contentful-paint",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] First Contentful Paint: First Contentful Paint marks the time at which the first text or image is painted. [Learn more about the First Contentful Paint metric](https://developer.chrome.com/docs/lighthouse/performance/first-contentful-paint/)."
+              }
+            },
+            {
+              "id": "lighthouse/cumulative-layout-shift",
+              "name": "cumulative-layout-shift",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Cumulative Layout Shift: Cumulative Layout Shift measures the movement of visible elements within the viewport. [Learn more about the Cumulative Layout Shift metric](https://web.dev/articles/cls)."
+              }
+            },
+            {
+              "id": "eslint/eqeqeq",
+              "name": "eqeqeq",
+              "shortDescription": {
+                "text": "Expected '===' and instead saw '=='."
+              }
+            },
+            {
+              "id": "eslint/no-console",
+              "name": "no-console",
+              "shortDescription": {
+                "text": "Unexpected console statement."
+              }
+            },
+            {
+              "id": "playwright/sitemap",
+              "name": "sitemap",
+              "shortDescription": {
+                "text": "A valid XML sitemap could not be found"
+              }
+            },
+            {
+              "id": "custom/meta-description",
+              "name": "meta-description",
+              "shortDescription": {
+                "text": "Meta description is missing"
+              }
+            },
+            {
+              "id": "custom/canonical",
+              "name": "canonical",
+              "shortDescription": {
+                "text": "Canonical URL is missing"
+              }
+            },
+            {
+              "id": "playwright/heading-h1",
+              "name": "heading-h1",
+              "shortDescription": {
+                "text": "Expected exactly one H1, found 0"
+              }
+            },
+            {
+              "id": "custom/html-lang",
+              "name": "html-lang",
+              "shortDescription": {
+                "text": "HTML language is missing"
+              }
+            },
+            {
+              "id": "custom/heading-h1",
+              "name": "heading-h1",
+              "shortDescription": {
+                "text": "Expected one H1; found 0"
+              }
+            },
+            {
+              "id": "playwright/canonical",
+              "name": "canonical",
+              "shortDescription": {
+                "text": "Document has no canonical URL"
+              }
+            },
+            {
+              "id": "playwright/meta-description",
+              "name": "meta-description",
+              "shortDescription": {
+                "text": "Document has no meta description"
+              }
+            },
+            {
+              "id": "custom/unknown",
+              "name": "unknown",
+              "shortDescription": {
+                "text": "Lighthouse failed: The \"start lh:runner:gather\" performance mark has not been set"
+              }
+            },
+            {
+              "id": "lighthouse/total-blocking-time",
+              "name": "total-blocking-time",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Total Blocking Time: Sum of all time periods between FCP and Time to Interactive, when task length exceeded 50ms, expressed in milliseconds. [Learn more about the Total Blocking Time metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time/)."
+              }
+            },
+            {
+              "id": "lighthouse/render-blocking-resources",
+              "name": "render-blocking-resources",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Eliminate render-blocking resources: Resources are blocking the first paint of your page. Consider delivering critical JS/CSS inline and deferring all non-critical JS/styles. [Learn how to eliminate render-blocking resources](https://developer.chrome.com/docs/lighthouse/performance/render-blocking-resources/)."
+              }
+            },
+            {
+              "id": "lighthouse/largest-contentful-paint",
+              "name": "largest-contentful-paint",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Largest Contentful Paint: Largest Contentful Paint marks the time at which the largest text or image is painted. [Learn more about the Largest Contentful Paint metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-largest-contentful-paint/)"
+              }
+            },
+            {
+              "id": "custom/json-ld-missing",
+              "name": "json-ld-missing",
+              "shortDescription": {
+                "text": "No JSON-LD block was found"
+              }
+            },
+            {
+              "id": "lighthouse/interactive",
+              "name": "interactive",
+              "shortDescription": {
+                "text": "[http://127.0.0.1:4173/] Time to Interactive: Time to Interactive is the amount of time it takes for the page to become fully interactive. [Learn more about the Time to Interactive metric](https://developer.chrome.com/docs/lighthouse/performance/interactive/)."
+              }
+            },
+            {
+              "id": "playwright/open-graph",
+              "name": "open-graph",
+              "shortDescription": {
+                "text": "Open Graph metadata is incomplete: missing title, description, image, url, type"
+              }
+            },
+            {
+              "id": "playwright/twitter-card",
+              "name": "twitter-card",
+              "shortDescription": {
+                "text": "Twitter Card metadata is incomplete: missing card, title, description, image"
+              }
+            },
+            {
+              "id": "custom/title-length",
+              "name": "title-length",
+              "shortDescription": {
+                "text": "Title length is 5; recommended 30–60"
+              }
+            },
+            {
+              "id": "custom/social-preview",
+              "name": "social-preview",
+              "shortDescription": {
+                "text": "Social preview is incomplete: og:title, og:description, og:image, og:url, twitter:card, twitter:title, twitter:description, twitter:image"
+              }
+            },
+            {
+              "id": "playwright/json-ld-missing",
+              "name": "json-ld-missing",
+              "shortDescription": {
+                "text": "No JSON-LD structured data was found"
+              }
+            },
+            {
+              "id": "custom/outdated-audit-unavailable",
+              "name": "outdated-audit-unavailable",
+              "shortDescription": {
+                "text": "Registry version checks could not complete"
+              }
+            },
+            {
+              "id": "custom/dependency-audit-unavailable",
+              "name": "dependency-audit-unavailable",
+              "shortDescription": {
+                "text": "Registry vulnerability audit could not complete"
+              }
+            },
+            {
+              "id": "custom/unused-file",
+              "name": "unused-file",
+              "shortDescription": {
+                "text": "src/analytics.js has no known importers"
+              }
+            },
+            {
+              "id": "custom/possibly-unused-file",
+              "name": "possibly-unused-file",
+              "shortDescription": {
+                "text": "Source file is not referenced by another local module"
+              }
+            },
+            {
+              "id": "custom/unused-exports",
+              "name": "unused-exports",
+              "shortDescription": {
+                "text": "1 export(s) in src/legacyCatalog.ts have no known consumers"
+              }
+            },
+            {
+              "id": "custom/unused-import",
+              "name": "unused-import",
+              "shortDescription": {
+                "text": "Imported binding 'unusedPromotion' is not used"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "playwright/page-error",
+          "level": "error",
+          "message": {
+            "text": "1 uncaught page error(s) occurred"
+          },
+          "locations": [],
+          "properties": {
+            "category": "bug",
+            "severity": "critical",
+            "issueId": "1e19212ccefb7cba"
+          }
+        },
+        {
+          "ruleId": "eslint/no-eval",
+          "level": "error",
+          "message": {
+            "text": "eval can be harmful."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/analytics.js"
+                },
+                "region": {
+                  "startLine": 9,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "security",
+            "severity": "high",
+            "issueId": "8c393f09dcab0d3d"
+          }
+        },
+        {
+          "ruleId": "playwright/console-error",
+          "level": "error",
+          "message": {
+            "text": "1 browser console error(s) occurred"
+          },
+          "locations": [],
+          "properties": {
+            "category": "bug",
+            "severity": "high",
+            "issueId": "4b588a00c8544593"
+          }
+        },
+        {
+          "ruleId": "lighthouse/uses-text-compression",
+          "level": "error",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Enable text compression: Text-based resources should be served with compression (gzip, deflate or brotli) to minimize total network bytes. [Learn more about text compression](https://developer.chrome.com/docs/lighthouse/performance/uses-text-compression/)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "performance",
+            "severity": "high",
+            "issueId": "ebc9edc822960c66"
+          }
+        },
+        {
+          "ruleId": "eslint/@typescript-eslint/no-unused-vars",
+          "level": "error",
+          "message": {
+            "text": "'unusedTrackerOption' is assigned a value but never used."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/analytics.js"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "high",
+            "issueId": "2c465c18ec6820c2"
+          }
+        },
+        {
+          "ruleId": "eslint/no-debugger",
+          "level": "error",
+          "message": {
+            "text": "Unexpected 'debugger' statement."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/analytics.js"
+                },
+                "region": {
+                  "startLine": 10,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "high",
+            "issueId": "103989e268eed2d7"
+          }
+        },
+        {
+          "ruleId": "tsc/TS2322",
+          "level": "error",
+          "message": {
+            "text": "Type '({ id: number; name: string; price: string; image: string; } | { id: number; name: string; price: number; image: string; })[]' is not assignable to type 'Product[]'."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main.ts"
+                },
+                "region": {
+                  "startLine": 16,
+                  "startColumn": 7
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "bug",
+            "severity": "high",
+            "issueId": "bfc0787daaa74493"
+          }
+        },
+        {
+          "ruleId": "tsc/TS2322",
+          "level": "error",
+          "message": {
+            "text": "Type 'string' is not assignable to type 'number'."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/pricing.ts"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 3
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "bug",
+            "severity": "high",
+            "issueId": "17649d80d96065e9"
+          }
+        },
+        {
+          "ruleId": "lighthouse/button-name",
+          "level": "error",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Buttons do not have an accessible name: When a button doesn't have an accessible name, screen readers announce it as \"button\", making it unusable for users who rely on screen readers. [Learn how to make buttons more accessible](https://dequeuniversity.com/rules/axe/4.10/button-name)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "maintainability",
+            "severity": "high",
+            "issueId": "16490f9311f64887"
+          }
+        },
+        {
+          "ruleId": "lighthouse/errors-in-console",
+          "level": "error",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Browser errors were logged to the console: Errors logged to the console indicate unresolved problems. They can come from network request failures and other browser concerns. [Learn more about this errors in console diagnostic audit](https://developer.chrome.com/docs/lighthouse/best-practices/errors-in-console/)"
+          },
+          "locations": [],
+          "properties": {
+            "category": "maintainability",
+            "severity": "high",
+            "issueId": "1925b876272f2a20"
+          }
+        },
+        {
+          "ruleId": "lighthouse/robots-txt",
+          "level": "error",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] robots.txt is not valid: If your robots.txt file is malformed, crawlers may not be able to understand how you want your website to be crawled or indexed. [Learn more about robots.txt](https://developer.chrome.com/docs/lighthouse/seo/invalid-robots-txt/)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "high",
+            "issueId": "24cf670db61c8236"
+          }
+        },
+        {
+          "ruleId": "lighthouse/unminified-javascript",
+          "level": "error",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Minify JavaScript: Minifying JavaScript files can reduce payload sizes and script parse time. [Learn how to minify JavaScript](https://developer.chrome.com/docs/lighthouse/performance/unminified-javascript/)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "maintainability",
+            "severity": "high",
+            "issueId": "5573ee8945be81ff"
+          }
+        },
+        {
+          "ruleId": "lighthouse/html-has-lang",
+          "level": "error",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] `<html>` element does not have a `[lang]` attribute: If a page doesn't specify a `lang` attribute, a screen reader assumes that the page is in the default language that the user chose when setting up the screen reader. If the page isn't actually in the default language, then the screen reader might not announce the page's text correctly. [Learn more about the `lang` attribute](https://dequeuniversity.com/rules/axe/4.10/html-has-lang)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "high",
+            "issueId": "8897a21767bd17a5"
+          }
+        },
+        {
+          "ruleId": "lighthouse/color-contrast",
+          "level": "error",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Background and foreground colors do not have a sufficient contrast ratio.: Low-contrast text is difficult or impossible for many users to read. [Learn how to provide sufficient color contrast](https://dequeuniversity.com/rules/axe/4.10/color-contrast)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "maintainability",
+            "severity": "high",
+            "issueId": "ac75c32e3c0cc101"
+          }
+        },
+        {
+          "ruleId": "lighthouse/meta-description",
+          "level": "error",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Document does not have a meta description: Meta descriptions may be included in search results to concisely summarize page content. [Learn more about the meta description](https://developer.chrome.com/docs/lighthouse/seo/meta-description/)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "high",
+            "issueId": "cd2730c6d8960c05"
+          }
+        },
+        {
+          "ruleId": "lighthouse/max-potential-fid",
+          "level": "error",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Max Potential First Input Delay: The maximum potential First Input Delay that your users could experience is the duration of the longest task. [Learn more about the Maximum Potential First Input Delay metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-max-potential-fid/)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "maintainability",
+            "severity": "high",
+            "issueId": "fe1237df348a076b"
+          }
+        },
+        {
+          "ruleId": "tsc/TS6133",
+          "level": "error",
+          "message": {
+            "text": "'unusedPromotion' is declared but its value is never read."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main.ts"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "high",
+            "issueId": "d469ea3b29f07c8c"
+          }
+        },
+        {
+          "ruleId": "tsc/TS6133",
+          "level": "error",
+          "message": {
+            "text": "'debugLabel' is declared but its value is never read."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main.ts"
+                },
+                "region": {
+                  "startLine": 17,
+                  "startColumn": 7
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "high",
+            "issueId": "622955c770bb6113"
+          }
+        },
+        {
+          "ruleId": "eslint/no-var",
+          "level": "warning",
+          "message": {
+            "text": "Unexpected var, use let or const instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/analytics.js"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "medium",
+            "issueId": "3e2ef1511eb55d36"
+          }
+        },
+        {
+          "ruleId": "eslint/prefer-const",
+          "level": "warning",
+          "message": {
+            "text": "'trackerName' is never reassigned. Use 'const' instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/analytics.js"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 5
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "medium",
+            "issueId": "32a4c7238b034289"
+          }
+        },
+        {
+          "ruleId": "playwright/html-lang",
+          "level": "warning",
+          "message": {
+            "text": "HTML document has no lang attribute"
+          },
+          "locations": [],
+          "properties": {
+            "category": "a11y",
+            "severity": "medium",
+            "issueId": "49833864678b9bc6"
+          }
+        },
+        {
+          "ruleId": "lighthouse/first-contentful-paint",
+          "level": "warning",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] First Contentful Paint: First Contentful Paint marks the time at which the first text or image is painted. [Learn more about the First Contentful Paint metric](https://developer.chrome.com/docs/lighthouse/performance/first-contentful-paint/)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "performance",
+            "severity": "medium",
+            "issueId": "adbd15b0bdc064e8"
+          }
+        },
+        {
+          "ruleId": "lighthouse/cumulative-layout-shift",
+          "level": "warning",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Cumulative Layout Shift: Cumulative Layout Shift measures the movement of visible elements within the viewport. [Learn more about the Cumulative Layout Shift metric](https://web.dev/articles/cls)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "performance",
+            "severity": "medium",
+            "issueId": "d9f11072b69fa6f3"
+          }
+        },
+        {
+          "ruleId": "eslint/eqeqeq",
+          "level": "warning",
+          "message": {
+            "text": "Expected '===' and instead saw '=='."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/analytics.js"
+                },
+                "region": {
+                  "startLine": 5,
+                  "startColumn": 16
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "medium",
+            "issueId": "e44fcc094f62644e"
+          }
+        },
+        {
+          "ruleId": "eslint/no-console",
+          "level": "warning",
+          "message": {
+            "text": "Unexpected console statement."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/analytics.js"
+                },
+                "region": {
+                  "startLine": 6,
+                  "startColumn": 3
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "medium",
+            "issueId": "f79510b7dc7ba9af"
+          }
+        },
+        {
+          "ruleId": "playwright/sitemap",
+          "level": "warning",
+          "message": {
+            "text": "A valid XML sitemap could not be found"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "medium",
+            "issueId": "032adf668202b6eb"
+          }
+        },
+        {
+          "ruleId": "custom/meta-description",
+          "level": "warning",
+          "message": {
+            "text": "Meta description is missing"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "medium",
+            "issueId": "03d46f3fc28ddcd7"
+          }
+        },
+        {
+          "ruleId": "custom/canonical",
+          "level": "warning",
+          "message": {
+            "text": "Canonical URL is missing"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "medium",
+            "issueId": "1aa66aa845cf7da9"
+          }
+        },
+        {
+          "ruleId": "playwright/heading-h1",
+          "level": "warning",
+          "message": {
+            "text": "Expected exactly one H1, found 0"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "medium",
+            "issueId": "3c3808375df0a46e"
+          }
+        },
+        {
+          "ruleId": "custom/html-lang",
+          "level": "warning",
+          "message": {
+            "text": "HTML language is missing"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "medium",
+            "issueId": "496d2f4c67e08742"
+          }
+        },
+        {
+          "ruleId": "custom/heading-h1",
+          "level": "warning",
+          "message": {
+            "text": "Expected one H1; found 0"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "medium",
+            "issueId": "96be0a42e0b4213c"
+          }
+        },
+        {
+          "ruleId": "playwright/canonical",
+          "level": "warning",
+          "message": {
+            "text": "Document has no canonical URL"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "medium",
+            "issueId": "ae4113b5a6a337ba"
+          }
+        },
+        {
+          "ruleId": "playwright/meta-description",
+          "level": "warning",
+          "message": {
+            "text": "Document has no meta description"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "medium",
+            "issueId": "dcbc5677d2dea202"
+          }
+        },
+        {
+          "ruleId": "custom/unknown",
+          "level": "warning",
+          "message": {
+            "text": "Lighthouse failed: The \"start lh:runner:gather\" performance mark has not been set"
+          },
+          "locations": [],
+          "properties": {
+            "category": "maintainability",
+            "severity": "medium",
+            "issueId": "e0f7d37e7b37b9bd"
+          }
+        },
+        {
+          "ruleId": "lighthouse/total-blocking-time",
+          "level": "note",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Total Blocking Time: Sum of all time periods between FCP and Time to Interactive, when task length exceeded 50ms, expressed in milliseconds. [Learn more about the Total Blocking Time metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time/)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "performance",
+            "severity": "low",
+            "issueId": "2be03c130b6e035c"
+          }
+        },
+        {
+          "ruleId": "lighthouse/render-blocking-resources",
+          "level": "note",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Eliminate render-blocking resources: Resources are blocking the first paint of your page. Consider delivering critical JS/CSS inline and deferring all non-critical JS/styles. [Learn how to eliminate render-blocking resources](https://developer.chrome.com/docs/lighthouse/performance/render-blocking-resources/)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "performance",
+            "severity": "low",
+            "issueId": "7a52a6fd10bbf650"
+          }
+        },
+        {
+          "ruleId": "lighthouse/largest-contentful-paint",
+          "level": "note",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Largest Contentful Paint: Largest Contentful Paint marks the time at which the largest text or image is painted. [Learn more about the Largest Contentful Paint metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-largest-contentful-paint/)"
+          },
+          "locations": [],
+          "properties": {
+            "category": "performance",
+            "severity": "low",
+            "issueId": "9eafa711aa53717b"
+          }
+        },
+        {
+          "ruleId": "custom/json-ld-missing",
+          "level": "note",
+          "message": {
+            "text": "No JSON-LD block was found"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "low",
+            "issueId": "005281a9ea95cbac"
+          }
+        },
+        {
+          "ruleId": "lighthouse/interactive",
+          "level": "note",
+          "message": {
+            "text": "[http://127.0.0.1:4173/] Time to Interactive: Time to Interactive is the amount of time it takes for the page to become fully interactive. [Learn more about the Time to Interactive metric](https://developer.chrome.com/docs/lighthouse/performance/interactive/)."
+          },
+          "locations": [],
+          "properties": {
+            "category": "maintainability",
+            "severity": "low",
+            "issueId": "0c3c37eb9ea1312d"
+          }
+        },
+        {
+          "ruleId": "playwright/open-graph",
+          "level": "note",
+          "message": {
+            "text": "Open Graph metadata is incomplete: missing title, description, image, url, type"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "low",
+            "issueId": "2ddda61cef4670d3"
+          }
+        },
+        {
+          "ruleId": "playwright/twitter-card",
+          "level": "note",
+          "message": {
+            "text": "Twitter Card metadata is incomplete: missing card, title, description, image"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "low",
+            "issueId": "683c9857e9f1b090"
+          }
+        },
+        {
+          "ruleId": "custom/title-length",
+          "level": "note",
+          "message": {
+            "text": "Title length is 5; recommended 30–60"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "low",
+            "issueId": "aa22afe90a73e79d"
+          }
+        },
+        {
+          "ruleId": "custom/social-preview",
+          "level": "note",
+          "message": {
+            "text": "Social preview is incomplete: og:title, og:description, og:image, og:url, twitter:card, twitter:title, twitter:description, twitter:image"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "low",
+            "issueId": "be4c39c000f34cb9"
+          }
+        },
+        {
+          "ruleId": "playwright/json-ld-missing",
+          "level": "note",
+          "message": {
+            "text": "No JSON-LD structured data was found"
+          },
+          "locations": [],
+          "properties": {
+            "category": "seo",
+            "severity": "low",
+            "issueId": "c31e731b2cc1cf58"
+          }
+        },
+        {
+          "ruleId": "custom/outdated-audit-unavailable",
+          "level": "note",
+          "message": {
+            "text": "Registry version checks could not complete"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "package.json"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "low",
+            "issueId": "8b4b822ef594eb71"
+          }
+        },
+        {
+          "ruleId": "custom/dependency-audit-unavailable",
+          "level": "note",
+          "message": {
+            "text": "Registry vulnerability audit could not complete"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "package.json"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "low",
+            "issueId": "9e59c604b52ab6f1"
+          }
+        },
+        {
+          "ruleId": "custom/unused-file",
+          "level": "note",
+          "message": {
+            "text": "src/analytics.js has no known importers"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/analytics.js"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "low",
+            "issueId": "82513310c30deaef"
+          }
+        },
+        {
+          "ruleId": "custom/possibly-unused-file",
+          "level": "note",
+          "message": {
+            "text": "Source file is not referenced by another local module"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/analytics.js"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "low",
+            "issueId": "fd4b858bbc4d97df"
+          }
+        },
+        {
+          "ruleId": "custom/possibly-unused-file",
+          "level": "note",
+          "message": {
+            "text": "Source file is not referenced by another local module"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/legacyCatalog.ts"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "low",
+            "issueId": "648496535d6b5df3"
+          }
+        },
+        {
+          "ruleId": "custom/unused-exports",
+          "level": "note",
+          "message": {
+            "text": "1 export(s) in src/legacyCatalog.ts have no known consumers"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/legacyCatalog.ts"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "low",
+            "issueId": "697d0f8f3a9564a0"
+          }
+        },
+        {
+          "ruleId": "custom/unused-file",
+          "level": "note",
+          "message": {
+            "text": "src/legacyCatalog.ts has no known importers"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/legacyCatalog.ts"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "low",
+            "issueId": "db28c33e85712a3d"
+          }
+        },
+        {
+          "ruleId": "custom/unused-import",
+          "level": "note",
+          "message": {
+            "text": "Imported binding 'unusedPromotion' is not used"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main.ts"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "category": "maintainability",
+            "severity": "low",
+            "issueId": "b5c8c9a755015994"
+          }
+        }
+      ]
+    }
+  ]
+}

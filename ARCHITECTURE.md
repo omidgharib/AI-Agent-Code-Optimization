@@ -1,5 +1,7 @@
 # ai-auditor — Architecture
 
+> **Legacy snapshot:** this pre-enterprise document has drifted from implementation. Normative boundaries live in the [Enterprise Roadmap](docs/enterprise/ROADMAP.md), [E00 baseline](docs/enterprise/phases/E00-PRODUCT-BOUNDARIES.md), and [ADR index](docs/adr/README.md).
+
 > A TypeScript CLI that audits source repositories, consolidates findings from multiple analyzers, prioritizes them, optionally applies safe LLM-assisted fixes, and produces JSON/Markdown reports.
 
 ---
@@ -1354,13 +1356,13 @@ export async function runLighthouse(url: string): Promise<Issue[]>;
 | Diff safety restrictions      | Required                                   |
 | JSON reporting                | Required                                   |
 | Markdown reporting            | Required                                   |
-| Playwright analyzer           | Planned / roadmap                          |
+| Playwright analyzer           | Implemented (`src/analyzers/playwright.ts`, requires audit `url`) |
 
 ## 30. Future Roadmap
 
 Potential future improvements include:
 
-- Completing the Playwright analyzer.
+- Extending the Playwright analyzer (deeper journey coverage, more routes).
 - Improving Lighthouse audit mapping and recommendations.
 - Adding more static analyzers.
 - Adding accessibility-specific browser audits.

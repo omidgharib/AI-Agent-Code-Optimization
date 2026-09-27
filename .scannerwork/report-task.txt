@@ -1,0 +1,6 @@
+projectKey=ai-auditor-local
+serverUrl=http://127.0.0.1:9000
+serverVersion=26.9.0.129388
+dashboardUrl=http://127.0.0.1:9000/dashboard?id=ai-auditor-local
+ceTaskId=9333ee83-c16c-4cc9-aae0-da9d844ca252
+ceTaskUrl=http://127.0.0.1:9000/api/ce/task?id=9333ee83-c16c-4cc9-aae0-da9d844ca252

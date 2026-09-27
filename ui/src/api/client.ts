@@ -1,0 +1,2 @@
+export class ApiError extends Error { constructor(readonly status: number, message: string, readonly code?: string) { super(message); } }
+export async function api<T>(url: string, init?: RequestInit): Promise<T> { const response = await fetch(url, { ...init, headers: { "content-type": "application/json", ...init?.headers } }); const payload = await response.json(); if (!response.ok) throw new ApiError(response.status, payload.detail ?? payload.title ?? payload.error ?? "Request failed", payload.code); return payload as T; }

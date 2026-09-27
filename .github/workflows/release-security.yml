@@ -1,0 +1,31 @@
+name: Signed release and SBOM
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --ignore-scripts
+      - run: npm run security:gate
+      - run: npm test -- --runInBand
+      - run: npm run build
+      - run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
+      - run: npm pack
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            ai-auditor-*.tgz
+            sbom.cdx.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ai-auditor-*.tgz
+            sbom.cdx.json

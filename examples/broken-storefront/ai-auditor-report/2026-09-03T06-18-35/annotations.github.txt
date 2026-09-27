@@ -1,0 +1,52 @@
+::error file=-,line=1,title=page-error::1 uncaught page error(s) occurred
+::error file=src/analytics.js,line=9,title=no-eval::eval can be harmful.
+::error file=-,line=1,title=console-error::1 browser console error(s) occurred
+::error file=-,line=1,title=uses-text-compression::[http://127.0.0.1:4173/] Enable text compression: Text-based resources should be served with compression (gzip, deflate or brotli) to minimize total network bytes. [Learn more about text compression](https://developer.chrome.com/docs/lighthouse/performance/uses-text-compression/).
+::error file=src/analytics.js,line=3,title=@typescript-eslint/no-unused-vars::'unusedTrackerOption' is assigned a value but never used.
+::error file=src/analytics.js,line=10,title=no-debugger::Unexpected 'debugger' statement.
+::error file=src/main.ts,line=16,title=TS2322::Type '({ id: number; name: string; price: string; image: string; } | { id: number; name: string; price: number; image: string; })[]' is not assignable to type 'Product[]'.
+::error file=src/pricing.ts,line=2,title=TS2322::Type 'string' is not assignable to type 'number'.
+::error file=-,line=1,title=button-name::[http://127.0.0.1:4173/] Buttons do not have an accessible name: When a button doesn't have an accessible name, screen readers announce it as "button", making it unusable for users who rely on screen readers. [Learn how to make buttons more accessible](https://dequeuniversity.com/rules/axe/4.10/button-name).
+::error file=-,line=1,title=errors-in-console::[http://127.0.0.1:4173/] Browser errors were logged to the console: Errors logged to the console indicate unresolved problems. They can come from network request failures and other browser concerns. [Learn more about this errors in console diagnostic audit](https://developer.chrome.com/docs/lighthouse/best-practices/errors-in-console/)
+::error file=-,line=1,title=robots-txt::[http://127.0.0.1:4173/] robots.txt is not valid: If your robots.txt file is malformed, crawlers may not be able to understand how you want your website to be crawled or indexed. [Learn more about robots.txt](https://developer.chrome.com/docs/lighthouse/seo/invalid-robots-txt/).
+::error file=-,line=1,title=unminified-javascript::[http://127.0.0.1:4173/] Minify JavaScript: Minifying JavaScript files can reduce payload sizes and script parse time. [Learn how to minify JavaScript](https://developer.chrome.com/docs/lighthouse/performance/unminified-javascript/).
+::error file=-,line=1,title=html-has-lang::[http://127.0.0.1:4173/] `<html>` element does not have a `[lang]` attribute: If a page doesn't specify a `lang` attribute, a screen reader assumes that the page is in the default language that the user chose when setting up the screen reader. If the page isn't actually in the default language, then the screen reader might not announce the page's text correctly. [Learn more about the `lang` attribute](https://dequeuniversity.com/rules/axe/4.10/html-has-lang).
+::error file=-,line=1,title=color-contrast::[http://127.0.0.1:4173/] Background and foreground colors do not have a sufficient contrast ratio.: Low-contrast text is difficult or impossible for many users to read. [Learn how to provide sufficient color contrast](https://dequeuniversity.com/rules/axe/4.10/color-contrast).
+::error file=-,line=1,title=meta-description::[http://127.0.0.1:4173/] Document does not have a meta description: Meta descriptions may be included in search results to concisely summarize page content. [Learn more about the meta description](https://developer.chrome.com/docs/lighthouse/seo/meta-description/).
+::error file=-,line=1,title=max-potential-fid::[http://127.0.0.1:4173/] Max Potential First Input Delay: The maximum potential First Input Delay that your users could experience is the duration of the longest task. [Learn more about the Maximum Potential First Input Delay metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-max-potential-fid/).
+::error file=src/main.ts,line=4,title=TS6133::'unusedPromotion' is declared but its value is never read.
+::error file=src/main.ts,line=17,title=TS6133::'debugLabel' is declared but its value is never read.
+::error file=src/analytics.js,line=1,title=no-var::Unexpected var, use let or const instead.
+::error file=src/analytics.js,line=2,title=prefer-const::'trackerName' is never reassigned. Use 'const' instead.
+::error file=-,line=1,title=html-lang::HTML document has no lang attribute
+::error file=-,line=1,title=first-contentful-paint::[http://127.0.0.1:4173/] First Contentful Paint: First Contentful Paint marks the time at which the first text or image is painted. [Learn more about the First Contentful Paint metric](https://developer.chrome.com/docs/lighthouse/performance/first-contentful-paint/).
+::error file=-,line=1,title=cumulative-layout-shift::[http://127.0.0.1:4173/] Cumulative Layout Shift: Cumulative Layout Shift measures the movement of visible elements within the viewport. [Learn more about the Cumulative Layout Shift metric](https://web.dev/articles/cls).
+::error file=src/analytics.js,line=5,title=eqeqeq::Expected '===' and instead saw '=='.
+::error file=src/analytics.js,line=6,title=no-console::Unexpected console statement.
+::error file=-,line=1,title=sitemap::A valid XML sitemap could not be found
+::error file=-,line=1,title=meta-description::Meta description is missing
+::error file=-,line=1,title=canonical::Canonical URL is missing
+::error file=-,line=1,title=heading-h1::Expected exactly one H1, found 0
+::error file=-,line=1,title=html-lang::HTML language is missing
+::error file=-,line=1,title=heading-h1::Expected one H1; found 0
+::error file=-,line=1,title=canonical::Document has no canonical URL
+::error file=-,line=1,title=meta-description::Document has no meta description
+::error file=-,line=1,title=unknown::Lighthouse failed: The "start lh:runner:gather" performance mark has not been set
+::warning file=-,line=1,title=total-blocking-time::[http://127.0.0.1:4173/] Total Blocking Time: Sum of all time periods between FCP and Time to Interactive, when task length exceeded 50ms, expressed in milliseconds. [Learn more about the Total Blocking Time metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time/).
+::warning file=-,line=1,title=render-blocking-resources::[http://127.0.0.1:4173/] Eliminate render-blocking resources: Resources are blocking the first paint of your page. Consider delivering critical JS/CSS inline and deferring all non-critical JS/styles. [Learn how to eliminate render-blocking resources](https://developer.chrome.com/docs/lighthouse/performance/render-blocking-resources/).
+::warning file=-,line=1,title=largest-contentful-paint::[http://127.0.0.1:4173/] Largest Contentful Paint: Largest Contentful Paint marks the time at which the largest text or image is painted. [Learn more about the Largest Contentful Paint metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-largest-contentful-paint/)
+::warning file=-,line=1,title=json-ld-missing::No JSON-LD block was found
+::warning file=-,line=1,title=interactive::[http://127.0.0.1:4173/] Time to Interactive: Time to Interactive is the amount of time it takes for the page to become fully interactive. [Learn more about the Time to Interactive metric](https://developer.chrome.com/docs/lighthouse/performance/interactive/).
+::warning file=-,line=1,title=open-graph::Open Graph metadata is incomplete: missing title, description, image, url, type
+::warning file=-,line=1,title=twitter-card::Twitter Card metadata is incomplete: missing card, title, description, image
+::warning file=-,line=1,title=title-length::Title length is 5; recommended 30–60
+::warning file=-,line=1,title=social-preview::Social preview is incomplete: og:title, og:description, og:image, og:url, twitter:card, twitter:title, twitter:description, twitter:image
+::warning file=-,line=1,title=json-ld-missing::No JSON-LD structured data was found
+::warning file=package.json,line=1,title=outdated-audit-unavailable::Registry version checks could not complete
+::warning file=package.json,line=1,title=dependency-audit-unavailable::Registry vulnerability audit could not complete
+::warning file=src/analytics.js,line=1,title=unused-file::src/analytics.js has no known importers
+::warning file=src/analytics.js,line=1,title=possibly-unused-file::Source file is not referenced by another local module
+::warning file=src/legacyCatalog.ts,line=1,title=possibly-unused-file::Source file is not referenced by another local module
+::warning file=src/legacyCatalog.ts,line=1,title=unused-exports::1 export(s) in src/legacyCatalog.ts have no known consumers
+::warning file=src/legacyCatalog.ts,line=1,title=unused-file::src/legacyCatalog.ts has no known importers
+::warning file=src/main.ts,line=1,title=unused-import::Imported binding 'unusedPromotion' is not used
