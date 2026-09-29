@@ -7,7 +7,7 @@ import { normalize } from "../normalize/normalizer";
 import type { PrioritizedIssue } from "../core/types";
 import { applyDiff } from "./diffApplier";
 export { issueVerificationFingerprint } from "./changeSet";
-import { issueVerificationFingerprint } from "./changeSet";
+import { matchVerificationIssues } from "./changeSet";
 async function createWorkspace(repoRoot: string): Promise<string> {
   const workspace = await fs.mkdtemp(path.join(tmpdir(), "ai-auditor-preflight-"));
   const excluded = new Set([".git", "node_modules", "dist", "build", "out", "coverage", "ai-auditor-report"]);
@@ -22,8 +22,8 @@ export async function preflightSuggestedPatch(repoRoot: string, unifiedDiff: str
     const applied = await applyDiff(unifiedDiff, workspace, false); if (!applied.success) return applied;
     const before = baseline.filter((issue) => issue.tool === "eslint" || issue.tool === "tsc");
     const after = normalize([...(await runEslint(workspace)), ...(await runTsc(workspace))]);
-    const known = new Set(before.map(issueVerificationFingerprint));
-    const introduced = after.filter((issue) => !known.has(issueVerificationFingerprint(issue)) && (issue.severity === "high" || issue.severity === "critical"));
+    const matching = matchVerificationIssues(before, after);
+    const introduced = after.filter((issue, index) => !matching.matchedAfter.has(index) && (issue.severity === "high" || issue.severity === "critical"));
     if (introduced.length) return { success: false, error: `Preflight introduced ${introduced.length} severe issue(s): ${introduced.map((issue) => `${issue.ruleId ?? issue.tool} in ${issue.location?.filePath ?? "unknown"}: ${issue.message}`).join("; ")}` };
     if (after.length >= before.length) return { success: false, error: `Preflight did not reduce code issues (${before.length} -> ${after.length})` };
     return { success: true };

@@ -58,6 +58,58 @@ export const issueVerificationFingerprint = (
   issue.message,
 ].join("\0");
 
+const issueVerificationBucket = (
+  issue: Pick<Issue, "tool" | "ruleId" | "location">,
+) => [
+  issue.tool,
+  issue.ruleId ?? "",
+  issue.location?.filePath?.replace(/\\/g, "/").toLowerCase() ?? "",
+].join("\0");
+
+/**
+ * Match diagnostics as a multiset. Exact messages are paired first; remaining
+ * diagnostics may pair by tool/rule/file so wording changes and line shifts do
+ * not turn an existing compiler finding into both a "fixed" and "introduced"
+ * finding. Bucket matching is count-preserving, so an additional diagnostic in
+ * the same file is still reported as introduced.
+ */
+export function matchVerificationIssues(
+  before: Array<Pick<Issue, "tool" | "ruleId" | "location" | "message">>,
+  after: Array<Pick<Issue, "tool" | "ruleId" | "location" | "message">>,
+): { matchedBefore: Set<number>; matchedAfter: Set<number> } {
+  const matchedBefore = new Set<number>();
+  const matchedAfter = new Set<number>();
+  const exact = new Map<string, number[]>();
+  before.forEach((issue, index) => {
+    const key = issueVerificationFingerprint(issue);
+    const indexes = exact.get(key) ?? [];
+    indexes.push(index);
+    exact.set(key, indexes);
+  });
+  after.forEach((issue, afterIndex) => {
+    const beforeIndex = exact.get(issueVerificationFingerprint(issue))?.find((index) => !matchedBefore.has(index));
+    if (beforeIndex === undefined) return;
+    matchedBefore.add(beforeIndex);
+    matchedAfter.add(afterIndex);
+  });
+  const buckets = new Map<string, number[]>();
+  before.forEach((issue, index) => {
+    if (matchedBefore.has(index)) return;
+    const key = issueVerificationBucket(issue);
+    const indexes = buckets.get(key) ?? [];
+    indexes.push(index);
+    buckets.set(key, indexes);
+  });
+  after.forEach((issue, afterIndex) => {
+    if (matchedAfter.has(afterIndex)) return;
+    const beforeIndex = buckets.get(issueVerificationBucket(issue))?.find((index) => !matchedBefore.has(index));
+    if (beforeIndex === undefined) return;
+    matchedBefore.add(beforeIndex);
+    matchedAfter.add(afterIndex);
+  });
+  return { matchedBefore, matchedAfter };
+}
+
 async function createWorkspace(repoRoot: string): Promise<string> {
   const workspace = await fs.mkdtemp(path.join(tmpdir(), "ai-auditor-change-set-"));
   const excluded = new Set([".git", "node_modules", "dist", "build", "out", "coverage", "ai-auditor-report"]);
@@ -91,7 +143,22 @@ async function runRelatedTests(workspace: string, touches: string[]) {
   const tests = [...new Set(touches.flatMap((file) => mapping.related[file] ?? []))];
   if (!tests.length) return { status: "not-found" as const, tests };
   try {
-    await execFileAsync("npm", ["test", "--", "--runInBand", "--runTestsByPath", ...tests], {
+    const npmArgs = mapping.frameworks.includes("vitest")
+      ? ["test", "--", ...tests]
+      : mapping.frameworks.includes("jest")
+        ? ["test", "--", "--runInBand", "--runTestsByPath", ...tests]
+        : ["test", "--", ...tests];
+    // On Windows npm is a .cmd shim. execFile("npm") fails with ENOENT and
+    // execFile("npm.cmd") can fail with EINVAL in newer Node releases. Invoke
+    // npm's JavaScript entry point with the current Node executable instead;
+    // this avoids shell quoting and does not depend on the service's PATH.
+    const bundledNpmCli = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+    const configuredNpmCli = process.env.npm_execpath;
+    const npmCli = process.platform === "win32"
+      ? configuredNpmCli && configuredNpmCli.endsWith(".js") ? configuredNpmCli : bundledNpmCli
+      : undefined;
+    if (npmCli) await fs.access(npmCli);
+    await execFileAsync(npmCli ? process.execPath : "npm", npmCli ? [npmCli, ...npmArgs] : npmArgs, {
       cwd: workspace,
       timeout: 120_000,
       maxBuffer: 2_000_000,
@@ -144,13 +211,13 @@ export async function prepareChangeSet(
     ]);
     const after = normalize([...eslintIssues, ...tscIssues, ...sonarRun.issues]);
     const before = baseline.filter((issue) => issue.tool === "eslint" || issue.tool === "tsc" || issue.tool === "sonar");
-    const known = new Set(before.map(issueVerificationFingerprint));
-    const remaining = new Set(after.map(issueVerificationFingerprint));
-    const fixedIssueIds = before.filter((issue) => !remaining.has(issueVerificationFingerprint(issue))).map((issue) => issue.id);
+    const matching = matchVerificationIssues(before, after);
+    const fixedIssueIds = before.filter((_, index) => !matching.matchedBefore.has(index)).map((issue) => issue.id);
     const selectedCodeIssues = before.filter((issue) => issueIds.includes(issue.id));
-    const unresolvedSelected = selectedCodeIssues.filter((issue) => remaining.has(issueVerificationFingerprint(issue)));
-    const introduced = after.filter((issue) =>
-      !known.has(issueVerificationFingerprint(issue)) &&
+    const fixedIds = new Set(fixedIssueIds);
+    const unresolvedSelected = selectedCodeIssues.filter((issue) => !fixedIds.has(issue.id));
+    const introduced = after.filter((issue, index) =>
+      !matching.matchedAfter.has(index) &&
       (issue.severity === "high" || issue.severity === "critical"));
     const introducedSonar = findNewBlockingSonarIssues(before, after);
     // A preview is ready only when it resolves every editable issue the user
@@ -173,7 +240,7 @@ export async function prepareChangeSet(
       : introducedSonar.length
       ? `Sonar preflight introduced ${introducedSonar.length} high/critical bug or vulnerability: ${introducedSonar.map((issue) => `${issue.ruleId ?? "sonar"} in ${issue.location?.filePath ?? "unknown"}:${issue.location?.startLine ?? 1}`).join("; ")}`
       : blockingIntroduced.length
-      ? `Introduced ${blockingIntroduced.length} high/critical issue(s)`
+      ? `Introduced ${blockingIntroduced.length} high/critical issue(s): ${blockingIntroduced.map((issue) => `${issue.ruleId ?? issue.tool} in ${issue.location?.filePath ?? "unknown"}: ${issue.message}`).join("; ")}`
       : tests.error;
     return {
       ...common,

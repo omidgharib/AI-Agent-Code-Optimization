@@ -447,7 +447,11 @@ async function attempt(
     throw err;
   }
 
-  let data: { choices?: Array<{ message: { content: string } }> };
+  let data: {
+    choices?: Array<{ message?: { content?: string } }>;
+    output_text?: string;
+    output?: Array<{ content?: Array<{ text?: string }> }>;
+  };
   try {
     data = (await res.json()) as {
       choices?: Array<{ message: { content: string } }>;
@@ -458,7 +462,13 @@ async function attempt(
     );
   }
 
-  const content = data.choices?.[0]?.message?.content;
+  const content =
+    data.choices?.[0]?.message?.content ??
+    data.output_text ??
+    (data.output
+      ?.flatMap((item) => item.content ?? [])
+      .map((part) => part.text ?? "")
+      .join("") || undefined);
   if (!content) {
     // Models that spend tokens on reasoning can return empty content.
     throw new TransientError(
@@ -577,8 +587,19 @@ export async function requestArchitectureOpinion(
     }),
   });
   if (!response.ok) throw new Error("Architecture review failed: HTTP " + response.status + " " + response.statusText);
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-  const content = payload.choices?.[0]?.message?.content?.trim();
+  const payload = await response.json() as {
+    choices?: Array<{ message?: { content?: string } }>;
+    output_text?: string;
+    output?: Array<{ content?: Array<{ text?: string }> }>;
+  };
+  const content = (
+    payload.choices?.[0]?.message?.content ??
+    payload.output_text ??
+    payload.output
+      ?.flatMap((item) => item.content ?? [])
+      .map((part) => part.text ?? "")
+      .join("")
+  )?.trim();
   if (!content) throw new Error("Architecture review returned no text");
   return content.slice(0, 12000);
 }

@@ -112,6 +112,14 @@ function parseHunks(
       else if (line.startsWith(" ")) {
         current.newLines.push(line.slice(1));
         current.oldLines.push(line.slice(1));
+      } else if (line && line !== "\\ No newline at end of file") {
+        // LLMs occasionally omit the leading '-' from one removed line while
+        // otherwise returning a valid unified hunk. Ignoring that line makes
+        // the old-side context incomplete and produces a misleading mismatch
+        // where the displayed prefixes look identical. Preserve the orphan as
+        // an old-side line; the exact-context matcher plus the verification
+        // workspace still prevent an unsafe patch from being accepted.
+        current.oldLines.push(line);
       }
       // "\ No newline at end of file" markers are intentionally ignored.
     }

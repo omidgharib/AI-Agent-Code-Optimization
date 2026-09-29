@@ -63,6 +63,33 @@ describe("applyDiff", () => {
     );
   });
 
+  it("recovers a removed line whose diff prefix was omitted by the model", async () => {
+    const p = join(dir, "src", "legacy.js");
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, `var legacySessionCount = 0;\nvar unusedLegacyFlag = "enabled";\n\nif (legacySessionCount == "0") {\n  console.log("Legacy telemetry started");\n}\n\neval("window.__pulseOpsLegacy = true");\ndebugger;\n`);
+    const diff = `--- a/src/legacy.js
++++ b/src/legacy.js
+@@ -1,10 +1,5 @@
+ var legacySessionCount = 0;
+-var unusedLegacyFlag = "enabled";
+${" "}
+-if (legacySessionCount == "0") {
+-  console.log("Legacy telemetry started");
+-}
+-
+eval("window.__pulseOpsLegacy = true");
+-debugger;
++window.__pulseOpsLegacy = true;
+`;
+
+    const result = await applyDiff(diff, dir, false);
+
+    expect(result.success).toBe(true);
+    expect(readFileSync(p, "utf8")).toBe(
+      `var legacySessionCount = 0;\n\nwindow.__pulseOpsLegacy = true;\n`,
+    );
+  });
+
   it("reports a hunk mismatch with context when the file is stale", async () => {
     const p = join(dir, "src", "index.js");
     mkdirSync(dirname(p), { recursive: true });

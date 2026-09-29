@@ -24,7 +24,7 @@ import {
 } from "../fix/llmClient";
 import { applyDiff, getDiffTargetPath } from "../fix/diffApplier";
 import { preflightSuggestedPatch } from "../fix/patchPreflight";
-import { issueVerificationFingerprint, prepareChangeSet } from "../fix/changeSet";
+import { matchVerificationIssues, prepareChangeSet } from "../fix/changeSet";
 import { PatchTransaction } from "../fix/patchTransaction";
 import { planSpecialistWork, specialistPromptContext } from "../fix/specialistPlanner";
 import { writeReport } from "../report/report";
@@ -736,16 +736,12 @@ export async function runAudit(
             config.severity,
           );
           const newPrioritized = prioritize(newIssues);
-          // Compare with the line-agnostic fingerprint: a fix legitimately
-          // shifts lines (e.g. deleting an import above a pre-existing type
-          // error), so the same problem must not be mistaken for a newly
-          // introduced regression just because its ID embeds the old line.
-          const previousFps = new Set(
-            previousFileIssues.map(issueVerificationFingerprint),
-          );
+          // Match diagnostics as a multiset so line shifts and harmless
+          // message wording changes do not masquerade as regressions.
+          const verificationMatching = matchVerificationIssues(previousFileIssues, newPrioritized);
           const introducedSevere = newPrioritized.filter(
-            (issue) =>
-              !previousFps.has(issueVerificationFingerprint(issue)) &&
+            (issue, index) =>
+              !verificationMatching.matchedAfter.has(index) &&
               (issue.severity === "high" || issue.severity === "critical"),
           );
           const improved =

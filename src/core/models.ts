@@ -45,6 +45,17 @@ export const MODEL_PROVIDERS: Record<string, ModelProvider> = {
     description:
       "AIFA OpenAI-compatible chat service. Pass the user-provided access token with --api-key (or AIFA_ACCESS_TOKEN).",
   },
+  "codex-gateway": {
+    id: "codex-gateway",
+    label: "Codex Local Gateway",
+    model: "gpt-5.6-terra",
+    baseUrl: "http://127.0.0.1:4317",
+    keyRequired: true,
+    keyEnv: "LOCAL_CODEX_GATEWAY_TOKEN",
+    free: false,
+    description:
+      "Local OpenAI-compatible gateway backed by an authenticated Codex CLI session. Requires the gateway URL and its Bearer token (LOCAL_CODEX_GATEWAY_TOKEN or --api-key).",
+  },
   ollama: {
     id: "ollama",
     label: "Ollama (local, free)",
@@ -265,7 +276,11 @@ export function resolveModel(opts: {
   }
 
   const localEndpoint = LOCAL_ENDPOINT.test(baseUrl);
-  const keyRequired = effective.keyRequired && !localEndpoint;
+  // Most local endpoints (for example Ollama) are keyless. A configured
+  // provider may still deliberately require a token even when it runs on
+  // localhost, as the Codex Local Gateway does.
+  const keyRequired =
+    effective.keyRequired && (!localEndpoint || Boolean(preset?.keyRequired));
 
   return {
     provider: effectiveProvider,

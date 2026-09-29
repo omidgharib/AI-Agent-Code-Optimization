@@ -12,6 +12,7 @@ const ENV_KEYS = [
   "AI_AUDITOR_PROVIDER",
   "OPENROUTER_API_KEY",
   "AIFA_ACCESS_TOKEN",
+  "LOCAL_CODEX_GATEWAY_TOKEN",
   "GROQ_API_KEY",
   "GEMINI_API_KEY",
   "MISTRAL_API_KEY",
@@ -115,6 +116,15 @@ describe("resolveModel", () => {
     const r = resolveModel({ provider: "ollama" });
     expect(r.keyRequired).toBe(false);
     expect(r.apiKey).toBe("");
+  });
+
+  it("resolves Codex Local Gateway with its local bearer token", () => {
+    process.env.LOCAL_CODEX_GATEWAY_TOKEN = "gateway-token";
+    const r = resolveModel({ provider: "codex-gateway" });
+    expect(r.model).toBe("gpt-5.6-terra");
+    expect(r.baseUrl).toBe("http://127.0.0.1:4317");
+    expect(r.apiKey).toBe("gateway-token");
+    expect(r.keyRequired).toBe(true);
   });
 
   it("zhipu free preset resolves to a flash model", () => {

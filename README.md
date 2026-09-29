@@ -50,6 +50,9 @@ ai-auditor audit . --fix --provider groq --api-key gsk-...
 # AIFA (token is supplied by the user)
 ai-auditor audit . --fix --provider aifa --api-key <access-token>
 
+# Codex Local Gateway (service URL + local Bearer token)
+ai-auditor audit . --fix --provider codex-gateway --base-url http://127.0.0.1:4317 --api-key <gateway-token>
+
 # List all model providers
 ai-auditor audit . --list-models
 
@@ -122,6 +125,7 @@ Built-in presets (with free defaults):
 | `cloudflare` | @cf/qwen/qwen2.5-coder-32b-instruct | yes | yes | `CF_API_TOKEN` (+ `CF_ACCOUNT_ID`, `CF_GATEWAY_SLUG`) |
 | `openai` | gpt-4.1-mini | no | yes | `OPENAI_API_KEY` |
 | `aifa` | assistance-model | no | yes | `AIFA_ACCESS_TOKEN` |
+| `codex-gateway` | gpt-5.6-terra | no | yes | `LOCAL_CODEX_GATEWAY_TOKEN` |
 | `deepseek` | deepseek-chat | no | yes | `DEEPSEEK_API_KEY` |
 | `custom` | gpt-4.1-mini | - | depends | - |
 
@@ -141,6 +145,7 @@ model is pulled (`ollama pull llama3.2`). Local endpoints
 |----------|-------------|
 | `OPENAI_API_KEY` | API key for OpenAI |
 | `AIFA_ACCESS_TOKEN` | User-provided AIFA bearer token |
+| `LOCAL_CODEX_GATEWAY_TOKEN` | Bearer token configured in Codex Local Gateway |
 | `OPENROUTER_API_KEY` | API key for OpenRouter free models |
 | `GROQ_API_KEY` | API key for Groq free tier |
 | `GEMINI_API_KEY` | API key for Google AI Studio free tier |
