@@ -174,7 +174,7 @@ function modelCatalog() {
   return Object.values(MODEL_PROVIDERS)
     .map((provider) => {
       const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(provider.baseUrl);
-      const keyRequired = provider.keyRequired && !local;
+      const keyRequired = provider.keyRequired && (!local || provider.id === "codex-gateway");
       const keyConfigured = !keyRequired || Boolean(provider.keyEnv && process.env[provider.keyEnv]);
       return {
         id: provider.id,
@@ -199,8 +199,12 @@ async function discoverModels(providerId: string, overrideBaseUrl?: string) {
     };
   const resolved = resolveModel({ provider: providerId, baseUrl: overrideBaseUrl });
   const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(resolved.baseUrl);
-  if (resolved.keyRequired && !resolved.apiKey && !local)
+  if (resolved.keyRequired && !resolved.apiKey && !local && providerId !== "codex-gateway")
     return { provider: providerId, online: false, models: [{ id: provider.model }], error: "API key is not configured on the server" };
+  // The gateway documents chat/responses routes, but no model catalog route.
+  // Let users enter any model ID supported by their Codex account.
+  if (providerId === "codex-gateway")
+    return { provider: providerId, online: Boolean(resolved.apiKey), models: [{ id: provider.model }] };
   let endpoint = resolved.baseUrl.replace(/\/+$/, "");
   if (endpoint.endsWith("/chat/completions")) endpoint = endpoint.slice(0, -"/chat/completions".length);
   if (!endpoint.endsWith("/v1")) endpoint += "/v1";
@@ -387,9 +391,10 @@ async function startJob(job: AuditJob, options: Record<string, unknown>): Promis
     args.push("--severity", options.severity);
 
   const childEnv = allowedEnvironment();
+  const providerKeyEnv = job.provider && MODEL_PROVIDERS[job.provider]?.keyEnv;
+  if (providerKeyEnv && process.env[providerKeyEnv]) childEnv[providerKeyEnv] = process.env[providerKeyEnv]!;
   if (typeof options.apiKey === "string" && options.apiKey.trim()) {
-    const keyEnv = job.provider && MODEL_PROVIDERS[job.provider]?.keyEnv;
-    if (keyEnv) childEnv[keyEnv] = options.apiKey.trim();
+    if (providerKeyEnv) childEnv[providerKeyEnv] = options.apiKey.trim();
   }
   if (options.sonarEnabled === true) childEnv.AI_AUDITOR_SONAR_ENABLED = "true";
   if (typeof options.sonarHostUrl === "string") childEnv.AI_AUDITOR_SONAR_HOST_URL = options.sonarHostUrl.trim();
@@ -501,11 +506,12 @@ const server = http.createServer(async (req, res) => {
       const projectPath = await validateProject(input.projectPath);
       const auditUrl = validateAuditUrl(input.url);
       const selection = validateModelSelection(input);
-      if (selection.provider === "aifa" && input.fix === true) {
+      if ((selection.provider === "aifa" || selection.provider === "codex-gateway") && input.fix === true) {
         const token = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
-        if (!token && !process.env.AIFA_ACCESS_TOKEN) throw new Error("AIFA access token is required");
+        const envName = MODEL_PROVIDERS[selection.provider].keyEnv!;
+        if (!token && !process.env[envName]) throw new Error(`${selection.provider} access token is required`);
         if (token.length > 512 || /[\0\r\n]/.test(token))
-          throw new Error("AIFA access token contains invalid characters or is too long");
+          throw new Error("Access token contains invalid characters or is too long");
       }
       const idempotencyKey = typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"].trim() : typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : randomUUID();
       if (!idempotencyKey || idempotencyKey.length > 200) throw new Error("Idempotency key is invalid");
