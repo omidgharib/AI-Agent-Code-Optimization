@@ -34,6 +34,12 @@ export const MODEL_PROVIDERS: Record<string, ModelProvider> = {
     description:
       "OpenAI paid models. Default provider when OPENAI_API_KEY is set.",
   },
+  "codex-gateway": {
+    id: "codex-gateway", label: "Codex Local Gateway", model: "",
+    baseUrl: "http://127.0.0.1:14317", keyRequired: true,
+    keyEnv: "LOCAL_CODEX_GATEWAY_TOKEN", free: false,
+    description: "Local Codex CLI via Responses API; requires LOCAL_CODEX_GATEWAY_TOKEN. Account usage limits apply.",
+  },
   aifa: {
     id: "aifa",
     label: "AIFA (Sandpod)",
@@ -242,12 +248,12 @@ export function resolveModel(opts: {
   const apiKey =
     opts.apiKey ??
     (effective.keyEnv ? process.env[effective.keyEnv] : undefined) ??
-    process.env.OPENAI_API_KEY ??
+    (effectiveProvider === "codex-gateway" ? undefined : process.env.OPENAI_API_KEY) ??
     "";
 
   const model = opts.model ?? process.env.AI_AUDITOR_MODEL ?? effective.model;
   let baseUrl =
-    opts.baseUrl ?? process.env.AI_AUDITOR_BASE_URL ?? effective.baseUrl;
+    opts.baseUrl ?? process.env.AI_AUDITOR_BASE_URL ?? (effectiveProvider === "codex-gateway" ? process.env.CODEX_GATEWAY_URL : undefined) ?? effective.baseUrl;
 
   if (
     effectiveProvider === "cloudflare" &&
@@ -265,7 +271,7 @@ export function resolveModel(opts: {
   }
 
   const localEndpoint = LOCAL_ENDPOINT.test(baseUrl);
-  const keyRequired = effective.keyRequired && !localEndpoint;
+  const keyRequired = effective.keyRequired && (effectiveProvider === "codex-gateway" || !localEndpoint);
 
   return {
     provider: effectiveProvider,

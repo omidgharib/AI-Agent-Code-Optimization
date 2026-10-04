@@ -1,4 +1,5 @@
 // FILE: src/fix/llmClient.ts
+import { gatewayText } from "./codexGateway";
 import * as nodeNet from "node:net";
 import { randomUUID } from "node:crypto";
 import type { FixRequest, FixResponse } from "../core/types";
@@ -415,19 +416,25 @@ export async function diagnoseEndpoint(
 async function attempt(
   url: string,
   init: RequestInit,
+  config?: LLMClientConfig,
 ): Promise<{ rawContent: string; data: FixResponse }> {
   const label = requestLabel(init.method ?? "POST", url);
   let res: Response;
   try {
     const headers = new Headers(init.headers);
     if (headers.has("x-request-id")) headers.set("x-request-id", randomUUID());
-    res = await fetch(url, {
+    if (config?.provider === "codex-gateway") {
+      const body = JSON.parse(String(init.body));
+      const content = await gatewayText(config, body.messages);
+      res = new Response(JSON.stringify({ choices: [{ message: { content } }] }));
+    } else res = await fetch(url, {
       ...init,
       headers,
       signal: AbortSignal.timeout(requestTimeoutMs()),
     });
   } catch (e) {
     // Network-level failure (refused, DNS, TLS reset, hang ...).
+    if (config?.provider === "codex-gateway") throw e;
     const err = new TransientError(describeNetworkError(e, requestTimeoutMs()));
     // A full request timeout (no HTTP response) is not worth retrying — the
     // endpoint won't magically come up 1.4s later. Fail once, fail clearly.
@@ -562,6 +569,12 @@ export async function requestArchitectureOpinion(
   language: "fa" | "en" = "fa",
 ): Promise<string> {
   const url = buildChatUrl(config.baseUrl);
+  if (config.provider === "codex-gateway") {
+    return (await gatewayText(config, [
+      { role: "system", content: "Provide a concise architecture review in " + language + ", based only on supplied structure, with strengths, three risks and three actions." },
+      { role: "user", content: JSON.stringify(architecture) },
+    ])).slice(0, 12000);
+  }
   const response = await fetch(url, {
     method: "POST",
     headers: buildChatHeaders(config),
@@ -613,7 +626,7 @@ export async function requestFix(
   const t0 = Date.now();
   try {
     const result = await withRetries(requestLabel("POST", url), () =>
-      attempt(url, init),
+      attempt(url, init, config),
     );
     if (trace)
       trace.logAiResponse(
@@ -666,7 +679,7 @@ export async function repairPatch(
   const t0 = Date.now();
   try {
     const result = await withRetries(requestLabel("POST", url), () =>
-      attempt(url, init),
+      attempt(url, init, config),
     );
     if (trace)
       trace.logAiResponse(

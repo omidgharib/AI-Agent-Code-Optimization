@@ -1,3 +1,4 @@
+import { gatewayModels, gatewayRoot } from "../fix/codexGateway";
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createReadStream, mkdirSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -158,7 +159,7 @@ function validateModelSelection(input: Record<string, unknown>) {
   if (!MODEL_PROVIDERS[provider])
     throw new Error("Unknown or unsupported model provider");
   const model = typeof input.model === "string" ? input.model.trim() : "";
-  if (!model || model.length > 160 || /[\0\r\n]/.test(model))
+  if ((!model && provider !== "codex-gateway") || model.length > 160 || /[\0\r\n]/.test(model))
     throw new Error("Model ID is invalid");
   let baseUrl: string | undefined;
   if (typeof input.baseUrl === "string" && input.baseUrl.trim()) {
@@ -166,21 +167,24 @@ function validateModelSelection(input: Record<string, unknown>) {
     if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Endpoint must use HTTP or HTTPS");
     baseUrl = parsed.toString().replace(/\/$/, "");
   }
+  if (provider === "codex-gateway") gatewayRoot(baseUrl ?? process.env.CODEX_GATEWAY_URL ?? MODEL_PROVIDERS[provider].baseUrl);
   if (provider === "custom" && !baseUrl) throw new Error("Custom provider requires an endpoint URL");
   return { provider, model, baseUrl };
 }
+
+let gatewaySessionToken = "";
 
 function modelCatalog() {
   return Object.values(MODEL_PROVIDERS)
     .map((provider) => {
       const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(provider.baseUrl);
-      const keyRequired = provider.keyRequired && !local;
-      const keyConfigured = !keyRequired || Boolean(provider.keyEnv && process.env[provider.keyEnv]);
+      const keyRequired = provider.keyRequired && (provider.id === "codex-gateway" || !local);
+      const keyConfigured = !keyRequired || Boolean((provider.id === "codex-gateway" && gatewaySessionToken) || (provider.keyEnv && process.env[provider.keyEnv]));
       return {
         id: provider.id,
         label: provider.label,
         defaultModel: provider.model,
-        baseUrl: provider.baseUrl,
+        baseUrl: provider.id === "codex-gateway" ? process.env.CODEX_GATEWAY_URL ?? provider.baseUrl : provider.baseUrl,
         keyRequired,
         keyConfigured,
         local,
@@ -188,7 +192,7 @@ function modelCatalog() {
     });
 }
 
-async function discoverModels(providerId: string, overrideBaseUrl?: string) {
+async function discoverModels(providerId: string, overrideBaseUrl?: string, token?: string) {
   const provider = MODEL_PROVIDERS[providerId];
   if (!provider) throw new Error("Unknown model provider");
   if (providerId === "aifa")
@@ -197,7 +201,11 @@ async function discoverModels(providerId: string, overrideBaseUrl?: string) {
       online: true,
       models: [{ id: "assistance-model" }, { id: "developer-model" }],
     };
-  const resolved = resolveModel({ provider: providerId, baseUrl: overrideBaseUrl });
+  const resolved = resolveModel({ provider: providerId, baseUrl: overrideBaseUrl, apiKey: providerId === "codex-gateway" ? token || gatewaySessionToken || undefined : undefined });
+  if (providerId === "codex-gateway") {
+    try { return { provider: providerId, online: true, models: await gatewayModels(resolved.baseUrl, resolved.apiKey) }; }
+    catch (error) { return { provider: providerId, online: false, models: [], error: error instanceof Error ? error.message : "Gateway discovery failed" }; }
+  }
   const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(resolved.baseUrl);
   if (resolved.keyRequired && !resolved.apiKey && !local)
     return { provider: providerId, online: false, models: [{ id: provider.model }], error: "API key is not configured on the server" };
@@ -387,7 +395,8 @@ async function startJob(job: AuditJob, options: Record<string, unknown>): Promis
     args.push("--severity", options.severity);
 
   const childEnv = allowedEnvironment();
-  if (typeof options.apiKey === "string" && options.apiKey.trim()) {
+  if (job.provider === "codex-gateway" && (gatewaySessionToken || process.env.LOCAL_CODEX_GATEWAY_TOKEN)) childEnv.LOCAL_CODEX_GATEWAY_TOKEN = gatewaySessionToken || process.env.LOCAL_CODEX_GATEWAY_TOKEN!;
+  if (job.provider !== "codex-gateway" && typeof options.apiKey === "string" && options.apiKey.trim()) {
     const keyEnv = job.provider && MODEL_PROVIDERS[job.provider]?.keyEnv;
     if (keyEnv) childEnv[keyEnv] = options.apiKey.trim();
   }
@@ -462,6 +471,16 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, browserTestContract);
     if (req.method === "GET" && url.pathname === "/api/model-providers")
       return json(res, 200, modelCatalog());
+    if (req.method === "POST" && url.pathname === "/api/models") {
+      if (!isTrustedLocalRequest(req)) return json(res, 403, { error: "Cross-site request rejected" });
+      const input = await body(req);
+      if (input.provider !== "codex-gateway") return json(res, 400, { error: "Unsupported provider" });
+      const token = typeof input.token === "string" ? input.token.trim() : "";
+      if (token.length > 4096 || /[\0\r\n]/.test(token)) return json(res, 400, { error: "Invalid gateway token" });
+      const result = await discoverModels("codex-gateway", typeof input.baseUrl === "string" ? input.baseUrl : undefined, token);
+      if (result.online && token) gatewaySessionToken = token;
+      return json(res, 200, result);
+    }
     if (req.method === "GET" && url.pathname === "/api/models") {
       const provider = url.searchParams.get("provider") ?? "forgetmeai";
       const endpoint = url.searchParams.get("baseUrl") ?? undefined;
@@ -589,7 +608,7 @@ const trustMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/trust$/);
       const input = await body(req);
       const report = JSON.parse(await fs.readFile(job.reportPath, "utf8")) as { architecture?: { debtScore: number; debtFactors: Record<string, number>; nodes: unknown[]; cycles: unknown[]; findings: unknown[] }; architectureOpinion?: unknown };
       if (!report.architecture) return json(res, 422, { error: "Architecture analysis is not available" });
-      const model = resolveModel({ provider: job.provider, model: job.model, baseUrl: job.baseUrl });
+      const model = resolveModel({ provider: job.provider, model: job.model, baseUrl: job.baseUrl, apiKey: job.provider === "codex-gateway" ? gatewaySessionToken || undefined : undefined });
       if (model.keyRequired && !model.apiKey) return json(res, 422, { error: "The selected AI provider needs an API key configured on the local server" });
       const opinion = await requestArchitectureOpinion(model, report.architecture, input.language === "en" ? "en" : "fa");
       report.architectureOpinion = { model: model.model, provider: model.provider, generatedAt: new Date().toISOString(), opinion };

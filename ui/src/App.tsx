@@ -11,7 +11,7 @@ interface TrustAssessment { confidence: number; changedLines: number; files: str
 interface HistoryPoint { id: string; summary?: { total: number }; qualityGate?: { passed: boolean }; lighthouseScores?: Record<string, number | null> }
 interface DirectoryListing { current: string; parent: string | null; directories: { name: string; path: string }[]; isProject: boolean }
 interface ModelProvider { id: string; label: string; defaultModel: string; baseUrl: string; keyRequired: boolean; keyConfigured: boolean; local: boolean }
-interface DiscoveredModel { id: string; realModel?: string; reasoning?: boolean; webSearch?: boolean }
+interface DiscoveredModel { id: string; realModel?: string; reasoning?: boolean; webSearch?: boolean; is_default?: boolean }
 
 const copy = {
   fa: { product: "AI Auditor", subtitle: "ممیزی و بهینه‌سازی امن پروژه‌های JavaScript و TypeScript", newAudit: "ممیزی جدید", project: "مسیر پروژه", placeholder: "C:\\Projects\\my-app", browse: "انتخاب پوشه", browsing: "در حال باز کردن…", chooseProject: "انتخاب پروژه", selectThis: "انتخاب این پوشه", notProject: "این پوشه package.json ندارد", up: "پوشه بالاتر", close: "بستن", emptyFolder: "پوشه دیگری داخل این مسیر نیست.", lighthouseUrl: "آدرس اجرای پروژه برای Lighthouse", urlPlaceholder: "http://localhost:3000", urlHelp: "اختیاری — پروژه وب باید از قبل روی این آدرس اجرا شده و قابل دسترس باشد.", pathHelp: "پوشه باید فایل package.json داشته باشد. سورس پروژه از سیستم شما خارج نمی‌شود.", start: "شروع ممیزی", running: "در حال بررسی…", fix: "اصلاح خودکار با هوش مصنوعی", dry: "فقط پیش‌نمایش تغییرات", severity: "حداقل شدت", all: "همه", overview: "نمای کلی", issues: "مشکلات", activity: "اجرای زنده", history: "تاریخچه", total: "کل مشکلات", critical: "بحرانی", high: "شدید", medium: "متوسط", low: "کم", noReport: "یک پروژه را برای شروع ممیزی انتخاب کنید.", noIssues: "مشکلی با این فیلتر پیدا نشد.", recent: "اجراهای اخیر", status: "وضعیت", file: "فایل", tool: "ابزار", cancel: "توقف", reportReady: "گزارش آماده است", safe: "محلی و خصوصی", emptyLog: "خروجی اجرا اینجا نمایش داده می‌شود.", error: "خطا", queued: "در صف", completed: "تمام‌شده", failed: "ناموفق", cancelled: "متوقف‌شده", lightTheme: "تم روشن", darkTheme: "تم تیره", issueDetails: "جزئیات مشکل", sourceExcerpt: "کد منبع", sourceUnavailable: "برای این یافته، کد منبع قابل نمایش نیست", loadingExcerpt: "در حال بارگذاری کد…" },
@@ -58,11 +58,12 @@ function App() {
   const [agentMode, setAgentMode] = useState<"suggest" | "dry-run" | "apply">("dry-run");
   const [severity, setSeverity] = useState("low");
   const [providers, setProviders] = useState<ModelProvider[]>([]);
-  const [provider, setProvider] = useState("forgetmeai");
-  const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:9655");
-  const [models, setModels] = useState<DiscoveredModel[]>([{ id: "deepseek-reasoner", reasoning: true }]);
-  const [model, setModel] = useState("deepseek-reasoner");
+  const [provider, setProvider] = useState("codex-gateway");
+  const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:14317");
+  const [models, setModels] = useState<DiscoveredModel[]>([]);
+  const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [gatewayToken, setGatewayToken] = useState("");
   const [modelOnline, setModelOnline] = useState<boolean | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() => (typeof localStorage !== "undefined" && localStorage.getItem("ai-auditor-theme") === "light" ? "light" : "dark"));
@@ -95,7 +96,7 @@ function App() {
   const qc = qualityCopy[lang];
 
   useEffect(() => { fetch("/api/jobs").then((r) => r.json()).then(setJobs).catch(() => undefined); }, []);
-  useEffect(() => { fetch("/api/model-providers").then((r) => r.json()).then(setProviders).catch(() => undefined); }, []);
+  useEffect(() => { fetch("/api/model-providers").then((r) => r.json()).then((items: ModelProvider[]) => { setProviders(items); setBaseUrl(items.find(item => item.id === "codex-gateway")?.baseUrl ?? "http://127.0.0.1:14317"); }).catch(() => undefined); }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("ai-auditor-theme", theme);
@@ -104,12 +105,19 @@ function App() {
   const loadModels = async (providerId: string) => {
     setLoadingModels(true); setModelOnline(null); setError("");
     try {
-      const response = await fetch(`/api/models?provider=${encodeURIComponent(providerId)}&baseUrl=${encodeURIComponent(baseUrl)}`);
+      const response = providerId === "codex-gateway"
+        ? await fetch("/api/models", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: providerId, baseUrl, token: gatewayToken }) })
+        : await fetch(`/api/models?provider=${encodeURIComponent(providerId)}&baseUrl=${encodeURIComponent(baseUrl)}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || (lang === "fa" ? "دریافت مدل‌ها ممکن نشد" : "Could not load models"));
       const nextModels: DiscoveredModel[] = data.models ?? [];
       setModels(nextModels); setModelOnline(data.online === true);
-      const preferred = nextModels.find((item) => item.id === "deepseek-reasoner")?.id ?? nextModels[0]?.id ?? "";
+      if (data.error) setError(lang === "fa" && providerId === "codex-gateway" ? (
+        data.error.includes("did not return JSON") ? "آدرس واردشده سرویس Codex Gateway نیست؛ آدرس dashboard گیت‌وی را بدون /dashboard وارد کنید." :
+        data.error.includes("LOCAL_CODEX_GATEWAY_TOKEN") ? "توکن gateway را وارد کنید و دریافت مدل‌ها را بزنید." :
+        data.error.includes("HTTP 401") ? "توکن gateway معتبر نیست." : data.error
+      ) : data.error);
+      const preferred = nextModels.find(item => item.is_default)?.id ?? nextModels.find((item) => item.id === "deepseek-reasoner")?.id ?? nextModels[0]?.id ?? "";
       setModel(preferred);
     } catch (cause) { setModelOnline(false); setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLoadingModels(false); }
@@ -225,7 +233,7 @@ function App() {
           <div className="path-row"><span className="folder">⌁</span><input id="project" data-testid="project-path" value={projectPath} onChange={(e) => setProjectPath(e.target.value)} placeholder={t.placeholder} required/><button className="browse-button" data-testid="folder-browser" type="button" onClick={() => openDirectory(projectPath || undefined)} disabled={picking || busy}>{picking ? t.browsing : t.browse}</button><button className="start-button" data-testid="start-audit" disabled={busy}>{busy ? t.running : t.start}<span>→</span></button></div>
           <p className="help">● {t.pathHelp} {tc.ignoreHelp}</p>
           <div className="url-field"><label htmlFor="audit-url">{tc.urlLabel}</label><div><span>◎</span><input id="audit-url" data-testid="audit-url" type="url" value={auditUrl} onChange={(e) => setAuditUrl(e.target.value)} placeholder={t.urlPlaceholder}/></div><p>{tc.urlHelp}</p></div>
-          <section className={`agent-settings ${fix ? "enabled" : ""}`}><div className="agent-heading"><div><strong>{a.title}</strong><p>{a.hint}</p></div><span className={modelOnline ? "online" : "offline"} role="status" aria-live="polite">{loadingModels ? a.connecting : modelOnline ? a.online : a.offline}</span></div><div className="agent-grid"><label>{a.provider}<select data-testid="provider-select" value={provider} onChange={(event) => { const next = event.target.value; setProvider(next); setBaseUrl(providers.find((item) => item.id === next)?.baseUrl ?? ""); }}>{providers.map((item) => <option key={item.id} value={item.id}>{item.label}{item.local ? ` · ${a.local}` : ""}</option>)}</select></label><label>{a.model}<select data-testid="model-select" value={model} onChange={(event) => setModel(event.target.value)} disabled={loadingModels}>{models.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}</select></label><button type="button" onClick={() => loadModels(provider)} disabled={loadingModels}>↻ {a.refresh}</button></div><label className="endpoint-field">{rc.endpoint}<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} dir="ltr"/></label>{provider === "aifa" && <div className="aifa-fields"><label>{a.token}<input type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} required={fix}/></label></div>}{models.find((item) => item.id === model) && <div className="model-detail"><code>{models.find((item) => item.id === model)?.realModel ?? model}</code>{models.find((item) => item.id === model)?.reasoning && <span>{a.reasoning}</span>}{models.find((item) => item.id === model)?.webSearch && <span>{a.search}</span>}</div>}{providers.find((item) => item.id === provider)?.keyRequired && !providers.find((item) => item.id === provider)?.keyConfigured && !(provider === "aifa" && apiKey) && <p className="key-warning">{a.keyMissing}</p>}</section>
+          <section className={`agent-settings ${fix ? "enabled" : ""}`}><div className="agent-heading"><div><strong>{a.title}</strong><p>{a.hint}</p></div><span className={modelOnline ? "online" : "offline"} role="status" aria-live="polite">{loadingModels ? a.connecting : modelOnline ? a.online : a.offline}</span></div><div className="agent-grid"><label>{a.provider}<select data-testid="provider-select" value={provider} onChange={(event) => { const next = event.target.value; setProvider(next); setModel(""); setModels([]); setBaseUrl(providers.find((item) => item.id === next)?.baseUrl ?? ""); }}>{providers.map((item) => <option key={item.id} value={item.id}>{item.label}{item.local ? ` · ${a.local}` : ""}</option>)}</select></label><label>{a.model}<select data-testid="model-select" value={model} onChange={(event) => setModel(event.target.value)} disabled={loadingModels}>{models.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}</select></label><button type="button" onClick={() => loadModels(provider)} disabled={loadingModels}>↻ {a.refresh}</button></div><label className="endpoint-field">{rc.endpoint}<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} dir="ltr"/></label>{provider === "codex-gateway" && <label className="endpoint-field">{lang === "fa" ? "توکن Codex Gateway" : "Codex Gateway token"}<input data-testid="gateway-token" type="password" autoComplete="off" dir="ltr" value={gatewayToken} onChange={event => setGatewayToken(event.target.value)} placeholder={lang === "fa" ? "توکن دسترسی gateway" : "Gateway access token"}/></label>}{provider === "aifa" && <div className="aifa-fields"><label>{a.token}<input type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} required={fix}/></label></div>}{models.find((item) => item.id === model) && <div className="model-detail"><code>{models.find((item) => item.id === model)?.realModel ?? model}</code>{models.find((item) => item.id === model)?.reasoning && <span>{a.reasoning}</span>}{models.find((item) => item.id === model)?.webSearch && <span>{a.search}</span>}</div>}{providers.find((item) => item.id === provider)?.keyRequired && !providers.find((item) => item.id === provider)?.keyConfigured && !(provider === "aifa" && apiKey) && provider !== "codex-gateway" && <p className="key-warning">{a.keyMissing}</p>}</section>
           <div className="options"><label className="toggle"><input data-testid="fix-toggle" type="checkbox" checked={fix} onChange={(e) => setFix(e.target.checked)}/><span/>{t.fix}</label>{fix && <label className="select-label agent-mode">{rc.mode}<select data-testid="agent-mode" value={agentMode} onChange={(e) => setAgentMode(e.target.value as typeof agentMode)}><option value="suggest">{rc.suggest}</option><option value="dry-run">{rc.preview}</option><option value="apply">{rc.apply}</option></select></label>}<span className="selection-count">{selectedIssueIds.size} {rc.selected}</span><label className="select-label">{t.severity}<select data-testid="severity-select" value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="low">{t.low}</option><option value="medium">{t.medium}</option><option value="high">{t.high}</option><option value="critical">{t.critical}</option></select></label></div>
           {error && <div className="error" data-testid="form-error" role="alert">{t.error}: {error}</div>}
         </form>
