@@ -8,5 +8,6 @@ dist/
 **/dist/
 *.tsbuildinfo
 **/*.tsbuildinfo
+.pnpm-store/
 
 .env.local
