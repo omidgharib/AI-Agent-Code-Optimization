@@ -25,10 +25,10 @@ For the production and enterprise architecture track, including the separation o
 | 6 | Trust, security and reversible changes | Core implemented | [PHASE-06-TRUST-SECURITY.md](phases/PHASE-06-TRUST-SECURITY.md) |
 | 7 | Single-page SEO Lab | Core implemented | [PHASE-07-SEO-LAB.md](phases/PHASE-07-SEO-LAB.md) |
 | 8 | Controlled multi-page SEO crawler | Core implemented | [PHASE-08-SEO-CRAWLER.md](phases/PHASE-08-SEO-CRAWLER.md) |
-| 9 | Architecture and dependency intelligence | Core implemented | [PHASE-09-ARCHITECTURE-INTELLIGENCE.md](phases/PHASE-09-ARCHITECTURE-INTELLIGENCE.md) |
+| 9 | Architecture and dependency intelligence | Complete | [PHASE-09-ARCHITECTURE-INTELLIGENCE.md](phases/PHASE-09-ARCHITECTURE-INTELLIGENCE.md) |
 | 10 | Test intelligence and visual regression | Core implemented | [PHASE-10-TEST-INTELLIGENCE.md](phases/PHASE-10-TEST-INTELLIGENCE.md) |
 | 11 | Specialist AI agents | Core implemented | [PHASE-11-SPECIALIST-AGENTS.md](phases/PHASE-11-SPECIALIST-AGENTS.md) |
-| 12 | Performance and bundle lab | Core implemented | [PHASE-12-PERFORMANCE-LAB.md](phases/PHASE-12-PERFORMANCE-LAB.md) |
+| 12 | Performance and bundle lab | Complete | [PHASE-12-PERFORMANCE-LAB.md](phases/PHASE-12-PERFORMANCE-LAB.md) |
 | 13 | Multi-project and team dashboard | Core implemented | [PHASE-13-TEAM-DASHBOARD.md](phases/PHASE-13-TEAM-DASHBOARD.md) |
 
 `Core implemented` means the deterministic domain model, analysis engine and tests exist and pass (`npm run build:all && npm test -- --runInBand`). A phase is deliberately not `Complete` while its remaining unchecked acceptance criteria (interactive bilingual UI surfaces, external connectors, Docker/headless packaging, networked role-based access) are product-integration work. Checked criteria are maintained inside each phase file (`docs/phases/PHASE-0X-*.md`).

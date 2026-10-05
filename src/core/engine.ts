@@ -11,7 +11,7 @@ import { runSonar, type SonarConfig } from "../analyzers/sonar";
 import { runSeoLab, type SeoHealth } from "../analyzers/seoLab";
 import { analyzeArchitecture, type ArchitectureReport } from "../analyzers/architecture";
 import { detectTests, importCoverage, testHealth } from "../verify/testIntelligence";
-import { metricsFromLighthouse, performanceScores } from "../analyzers/performanceLab";
+import { metricsFromLighthouse, performanceScores, discoverBundleMetadata } from "../analyzers/performanceLab";
 import { normalize } from "../normalize/normalizer";
 import { prioritize } from "../prioritize/prioritize";
 import { buildContext } from "../fix/contextBuilder";
@@ -227,6 +227,7 @@ export async function runAudit(
     const lighthouseDesktop = initialAnalysis.lighthouseDesktop;
     const seoLab = initialAnalysis.seoLab;
     const architecture = initialAnalysis.architecture;
+    const bundleMetadata = await discoverBundleMetadata(repoRoot);
     const sonar = initialAnalysis.sonar;
 
     let prioritized = prioritize(issues);
@@ -906,7 +907,7 @@ export async function runAudit(
       lighthouseDesktop,
       architecture,
       await (async () => { const sources = architecture?.nodes.filter((node) => node.kind === "production").map((node) => node.file) ?? []; const mapping = await detectTests(repoRoot, sources); const coverage = await importCoverage(repoRoot).catch(() => []); return testHealth(mapping, coverage); })(),
-      lighthouse ? performanceScores([metricsFromLighthouse(config.url ?? "/", "mobile", lighthouse), ...(lighthouseDesktop ? [metricsFromLighthouse(config.url ?? "/", "desktop", lighthouseDesktop)] : [])]) : undefined,
+      { ...performanceScores(lighthouse ? [metricsFromLighthouse(config.url ?? "/", "mobile", lighthouse), ...(lighthouseDesktop ? [metricsFromLighthouse(config.url ?? "/", "desktop", lighthouseDesktop)] : [])] : [], bundleMetadata.report), bundleReport: bundleMetadata.report, metadataError: bundleMetadata.error },
       problemCardIssues,
       sonar,
     );

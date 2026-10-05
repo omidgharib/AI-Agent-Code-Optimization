@@ -111,7 +111,7 @@ export interface ReportData {
   lighthouseDesktop?: LighthouseReport;
   architecture?: ArchitectureReport;
   testHealth?: { score: number; testedSources: number; totalSources: number; gaps: unknown[] };
-  performanceLab?: { performance: number; bundle: number };
+  performanceLab?: { performance: number; bundle: number; bundleReport?: import("../analyzers/performanceLab").BundleReport; metadataError?: string };
   rootCauseGroups?: RootCauseGroup[];
   sonar?: SonarSummary;
 }
